@@ -1,0 +1,16 @@
+# Your own data and logs (never shared)
+hand_mouse.log*
+hand_mouse_state.json
+snapshots/
+setup_log.txt
+python_path.txt
+.shortcut_created
+
+# Backup of the last version (git keeps history now)
+hand_mouse_previous.py
+
+# Generated / not used
+gestures.html
+YOLOv10n_hands.pt
+__pycache__/
+*.pyc

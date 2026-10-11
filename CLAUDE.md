@@ -1,0 +1,237 @@
+# Hand Mouse: notes for Claude Code
+
+You are taking over an existing, working app. Read this file first. It explains what the app does, how it is
+built, how to test it safely, and what we learned along the way (most settings exist for a measured reason).
+
+## What it is
+
+**Hand Mouse** is a single-file Python app (`hand_mouse.py`, about 3,200 lines) that turns the laptop webcam into a
+mouse on **Windows 11**. It tracks the user's hands with **MediaPipe Hand Landmarker** and moves the cursor,
+clicks, scrolls, and controls the volume with hand gestures. It runs in the background with a tray icon,
+starts from a desktop shortcut, and can start with Windows.
+
+The user is the only user. They test by using it live and report problems with screenshots of the camera
+window. Their English is not their first language, so read requests generously and reply in plain words. They
+care that it works reliably; when unsure, measure before claiming something helps.
+
+## Files in this folder
+
+| File | What it is |
+|---|---|
+| `hand_mouse.py` | The whole app. Settings are the UPPER_CASE constants at the top (lines ~57-260), each with a comment. |
+| `tests/` | Test suites with fake hands, fake mouse, fake camera and fake window. Run `python tests/run_tests.py`. |
+| `README.md` | User-facing guide (gestures, tray, tuning). Keep it in sync when gestures change. |
+| `hand_landmarker.task` | MediaPipe model (downloaded automatically if missing). |
+| `hand_finder.onnx` | Second hand detector: HaGRIDv2 YOLOv10n "hands", exported to ONNX at 320x320 (see below). |
+| `hand_mouse.ico` | Tray / shortcut icon. |
+| `hand_mouse_state.json` | Learned state: `ref_palm` (normal hand size), `camera` (chosen backend/mode/fps), `box` (cursor box), `window` (camera window rect), `main_side` ("right"/"left"), `welcomed_v*` flags. Safe to delete keys. |
+| `hand_mouse.log` (+ `.1`, `.2`) | Log, rotated at 2 MB. Has a `diag` line every second (see Diagnostics). |
+| `hand_mouse_previous.py` | Backup of the version before the last change (by convention, refreshed before every deploy). |
+| `gestures.html` | Help page, regenerated from `HELP_HTML` in the code every time it is opened. |
+| `snapshots/` | Plain camera frames saved with **S** in the camera window, for debugging missed gestures. |
+| `setup.bat`, `run_preview.bat`, `start_background.bat`, `requirements.txt`, `python_path.txt` | Install / launch helpers. `python_path.txt` holds the Python used (Python 3.12 in `%LOCALAPPDATA%\Programs\Python\Python312`). |
+| `YOLOv10n_hands.pt` | Original PyTorch weights of the hand finder. Not used by the app; can be deleted. |
+
+## Running
+
+- **Normal use:** the desktop shortcut runs `pythonw.exe hand_mouse.py` (no console). There is a single instance,
+  enforced by a named mutex. Double-clicking the shortcut while it runs opens the camera window of the running
+  instance (named event `Local\HandMouseShowView`).
+- **With the camera window from the start:** `python hand_mouse.py --preview` (or `run_preview.bat`).
+- **IMPORTANT: auto-restart on edit.** `AUTO_RESTART_ON_EDIT = True` means the running app restarts itself about
+  1 s after `hand_mouse.py` is saved. Every save you make restarts the user's live app.
+  - A syntax error or crash-at-import kills it, and the user loses their mouse until they start it again.
+  - Before saving, check with `python -m pyflakes hand_mouse.py` (or write to a temp file, check, then replace).
+  - Copy the current file to `hand_mouse_previous.py` before a risky change.
+- **After a deploy,** confirm in `hand_mouse.log`: `hand_mouse.py changed, restarting` -> `started (...)` ->
+  `camera ready in N s`, with no `ERROR` / `fatal error`.
+- **Dependencies** (`requirements.txt`): mediapipe (Tasks API, 0.10.x), opencv-python (5.0 on this laptop),
+  numpy, pynput (hotkeys), pystray + Pillow (tray), onnxruntime (hand finder) and pycaw + comtypes (volume).
+  `ensure_package()` pip-installs pystray/onnxruntime/pycaw on first use; pycaw is pre-installed in a
+  background thread at start, so the first thumbs-up doesn't block.
+
+## Gestures (current behaviour)
+
+The **main hand** is the user's **right hand**. All gestures are made with the main hand. The other hand only
+takes part in the two-fist on/off (`SECOND_HAND_GESTURES = False`). To make the **left** hand the main hand:
+show only the left hand and make a fist twice quickly. This is remembered in state (`main_side`) until the right
+hand does the same.
+
+| Action | Gesture | Key settings / code |
+|---|---|---|
+| Move cursor | Index fingertip of the main hand inside the cursor box | `CursorBox`, `CursorFilter` |
+| Left / right click | Thumb touches middle / ring fingertip (3D distance / palm length < `TOUCH_ON` 0.34) | `ClickTracker` |
+| Middle click | Thumb on middle and ring tips together | `BOTH_RATIO`, `UPGRADE_WINDOW` |
+| Drag | Keep touching and move (cursor stays put until moved `DRAG_START_PX`) | |
+| Double-click | Two quick pinches; adds a helper click if the second comes later than the Windows double-click time | `DOUBLE_CLICK_WINDOW`, only after a short click (< `QUICK_RELEASE_HOLD`) |
+| Mouse button 4 | Thumb tip on **index fingertip** ("OK"), middle and ring straight | `SideButtonTracker`, `INDEX_PINCH_MARGIN` |
+| Mouse button 5 | Palm to camera, thumb folded across the palm onto the **ring/little finger base** (measured in 2D) | `X2_ZONE`, `SIDE_TOUCH_ON` 0.12, `SIDE_FACING` |
+| Volume | Thumbs-up held `VOLUME_HOLD` 0.45 s; thumb up = 100%, turned to down = 0%; changes at most 150%/s | `ThumbVolume`, `thumb_out`, `thumb_angle`, `WinVolume` (pycaw) |
+| Scroll | Fist (thumb tucked) and move up/down from where it closed | `FistScroll`, `SCROLL_*` |
+| Gestures off / on | Both hands as fists for `STOP_HOLD` 1 s; switches once per hold; open a hand (or hide hands) `STOP_REARM` 0.4 s to switch again | `Engine` two-fist block, `_rearm` |
+| Switch main hand | Only the non-main hand in view, fist twice quickly | `_switch_main`, `DoubleGrab` |
+| Window swipe | Disabled (it was second-hand-only); code is still there behind `SECOND_HAND_GESTURES` | `Swiper` |
+
+There are also hotkeys (Ctrl+Alt+H stop/resume, Ctrl+Alt+C re-learn hand size, Ctrl+Alt+Q quit) and a tray
+menu: Camera & log window, Gestures on, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size,
+Close. In the tray icon an orange badge means gestures are off (camera on), and a red badge means stopped
+(camera off).
+
+## Architecture (one frame)
+
+1. **`Camera`** is a thread that always keeps only the newest frame. **`open_camera`** probes backends and
+   modes (MSMF 1280x720 gives 30 fps here; DSHOW gave only 10) and caches the choice in state.
+   `OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS=0` cuts the open time from 9 s to about 2.8 s. The frame is
+   mirrored (`cv2.flip`) before anything else.
+2. **`HandSensor.process(rgb)`** returns a list of `Hand` objects:
+   - **Full-frame tracker:** a VIDEO-mode landmarker on a 640-wide INTER_AREA downscale (`DETECT_WIDTH`).
+   - **Zoomed re-read:** small hands (`size < ZOOM_BELOW`) are re-read from a zoomed full-resolution crop by an
+     IMAGE-mode landmarker; there is a second try with a larger crop. If both fail the hand is marked `unsure`,
+     and gesture states are held instead of updated.
+   - **Rescue:** a hand lost less than `RESCUE_TIME` ago is searched for in a zoomed crop where it was.
+   - **Centre scan:** with no hands in view, the middle of the picture is scanned every `SCAN_EVERY` frames.
+     Rescue and scan use the **strict** `finder` model, `DISCOVER_CONFIDENCE` 0.7.
+   - **Colour fallback:** when nothing is found for a moment, the app tries the picture with red and blue
+     swapped, then a per-area white-balanced copy, and keeps whichever works (`self.view`). Every ~60 frames it
+     re-checks whether normal colours work again.
+   - **`HandFinder`** (ONNX YOLO) runs when still nothing is found. MediaPipe then reads a crop of 2.2x the
+     finder's box. It runs every frame while it is the one finding the hand, otherwise every `HAND_FINDER_EVERY`
+     frames.
+   - **Cleanup:** `dedupe` removes duplicate detections and `_inside` drops hands that are mostly outside the
+     frame.
+3. **`Hand`** fields:
+   - `img`: 21 normalised (x, y) points in the mirrored picture.
+   - `flat`: the same points with y scaled by aspect, so both axes share one unit.
+   - `world`: 3D metres from MediaPipe.
+   - `label`: MediaPipe handedness.
+   - Cached properties: `ext` (finger extension: tip-wrist / knuckle-wrist; about 1.0 folded, 1.8 straight),
+     `pinch`, `side` (button 4/5 distances; **not** left/right), `tip_min`, `facing`, `palm`, `size`.
+   - `hand_side` ("right"/"left") is set by the `Engine`.
+4. **`Engine.update(hands, now)`** runs in this order:
+   1. Match hands to tracks by position (`Track`).
+   2. Roles via `_roles`:
+      - Track `side_score` votes: position +/-2 when both hands are in view, and the label +/-1, clamped at
+        +/-12. `RIGHT_HAND_LABEL = "Left"`, because MediaPipe calls the user's right hand "Left" in the
+        mirrored picture.
+      - The main hand is the one whose side equals `main_side`.
+   3. Fist states for all hands (needed for two fists); scrolling counts only for the main hand.
+   4. Volume (main hand).
+   5. Two-fist on/off.
+   6. Main-hand switch.
+   7. If gestures are off: return.
+   8. Scroll, side buttons, then swipe (off).
+   9. If there is no main hand: hold everything and return.
+   10. Clicks, then cursor (fingertip spike filter, `CursorBox` update with compensation, `CursorFilter`).
+5. **Cursor:**
+   - **Mapping:** the fingertip position inside the cursor box maps to the virtual screen (all monitors).
+   - **`CursorFilter`:**
+     - One-Euro smoothing.
+     - A steady radius.
+     - Precision gain for slow motion.
+     - Realignment to the absolute position during fast motion and at the box edge.
+     - A hold (frozen) during clicks, fists and the thumbs-up.
+   - **`CursorBox`:**
+     - Behaves like a dead-zone game camera: it follows the finger after it has been outside for 0.5 s.
+     - Its size slowly fits the 5th–95th percentile of the finger's movement range (0.75–1.3x).
+     - `CursorFilter.shift()` compensates every box change, so the cursor never jumps.
+6. **`WinMouse`** uses `SetCursorPos`, `mouse_event` (including XBUTTON 1/2) and `keybd_event` (volume
+   keys). The process is per-monitor-v2 DPI aware.
+7. **UI:**
+   - `TrayIcon` (pystray).
+   - **`ViewWindow` runs the OpenCV window in its own thread.** Windows blocks a window's thread while its title
+     bar is dragged. Before this, dragging the camera window with a gesture deadlocked: the app could not see the
+     release, so the mouse button stayed down.
+   - `draw_preview` (camera picture) plus `draw_panel` (right-hand panel: current gesture, per-hand numbers,
+     and a colour-coded log fed by the `EventFeed` logging handler).
+
+## Lessons learned (please keep these)
+
+- **3D depth from MediaPipe is unreliable for "thumb touches a finger's side or palm".** Button 4 on the middle
+  of the index finger, and button 5 on the palm, read 0.36–0.62 in 3D while touching. 2D picture distance worked
+  (0.02–0.05). Fingertip-to-fingertip pinches are fine in 3D.
+- **Gestures on the path of another gesture misfire.** Button 4 on the middle of the index finger fired before
+  every click, because the thumb crosses it, so it moved to the index fingertip. When adding a gesture, think
+  about which hand shapes the hand passes through on the way to other gestures.
+- **Fist vs thumbs-up:** `thumb_out` (thumb tip outside the folded fingers' 2D box) separated the two perfectly
+  on real video: fists ≤ 0.13, thumbs-ups ≥ 0.5. `is_fist` excludes thumb-out, so a thumbs-up never scrolls.
+- **Toggles need a real release.** Two fists used to switch on and off forever, because one dropped frame looked
+  like "released". Re-arming now needs an open hand, or no hands, for 0.4 s.
+- **Image enhancement made detection worse.** CLAHE, gamma and grayscale were tried and measured: they
+  amplify noise or remove the skin colour the model needs.
+- **What did help in the dark:**
+  - Lower detection/presence confidence (dark test videos: 1–18% -> 75–83% of frames found).
+  - The red/blue swap for coloured light (a blue-lit hand 0% -> 53–99%).
+  - The HaGRID hand finder (the user's dark frames: 0% -> 80–100%).
+- **Lower thresholds bring false hands.** Zoomed crops of a face or headphones in swapped colours produced false
+  hands at 0.45 confidence. Discovery searches use 0.7, which gave none.
+- **A crop-tracking VIDEO landmarker is a trap.** Using one for zoomed re-reads was faster, but it misread finger
+  shapes in 80% of frames when the gesture changed, so it was reverted.
+- **The handedness label is right in 96–100% of frames,** with wrong runs of up to 7 frames. That is why sides
+  are vote-averaged per track.
+- **In dim light the camera lowers its fps** (longer exposure), which blurs the hand. Software can't recover
+  blur. The app shows "DIM LIGHT" and a one-time tip; the real fix is a lamp in front of or beside the user.
+- **OpenCV 5:** `destroyWindow` on a window already closed with X raises an exception. All window calls are
+  guarded.
+- **Mixed-DPI monitors:** the camera window uses `WINDOW_NORMAL | WINDOW_KEEPRATIO`. Its rect is remembered in
+  state.
+
+## Testing
+
+- **`python tests/run_tests.py [filter]`** runs everything in a few minutes on any OS. Each file prints
+  PASS/FAIL lines and stops at the first FAIL.
+- **`tests/test_core.py`** holds the synthetic hand model (`make(px, py, pinch, fist, fold, label, jitter)`),
+  `FakeMouse` and helpers, and the other tests import it.
+  - It sets `hm.RIGHT_HAND_LABEL = "Right"`, because synthetic hands are labelled with the real side.
+  - `TV.thumbs(angle)` in `test_volume.py` builds a thumbs-up turned to an angle.
+- **Loop tests** (`test_loop_*`) run the real `run()` main loop with a fake landmarker, camera and cv2 window
+  functions. `test_loop_window_drag` checks that tracking continues while the window thread is blocked.
+- **Real-video checks** were run during development on the MediaPipe sample videos (`gesture_video.mp4`,
+  `hand_video.mp4` from google-ai-edge/mediapipe-samples), shrunk to simulate distance and darkened or tinted to
+  simulate light, by comparing found % and "shape ok %" against the full-quality reference. They are not
+  included here (too large), but this method is how to judge detection changes. For anything about real
+  detection, prefer the user's `snapshots/` frames.
+- **When you change behaviour:** update or add a test, run the whole suite, run pyflakes, then deploy and check
+  the log.
+
+## Diagnostics
+
+- `hand_mouse.log` `diag` line every second:
+  `diag fps F hands N | M ms/frame | camera C fps light L | min t-mid … | scrolling frames a/b | zoomed z found-again r | size k | pressed … | <status lines>`.
+  - `size` is the distance factor: 1 = the normal distance learned in `ref_palm`, 0.5 = twice as far.
+  - `light` is the mean picture brightness (about 30 = a very dark room).
+- **Camera window** (tray -> Camera & log window): the right-hand panel shows live numbers per hand:
+  - fingers: extension of index, middle, ring, little
+  - `t-mid`, `t-ring`: click distances
+  - `t-idx`: button 4
+  - `t-ring-base`: button 5
+  - `size`, the state of each gesture, and the cursor box
+  - **S** saves a clean frame to `snapshots/`, **P** stops/resumes, **Esc** closes the window.
+- **Events in the log:** clicks, buttons, scroll on/off, volume on/off, gestures off/on, main hand
+  switch, colour-view switches, the hand finder loading, camera settings at open.
+
+## Known open issues and ideas
+
+- **Play / pause gesture removed (2026-10-11)** at the user's request (thumb out + double finger fold). The
+  version that still had it is in `hand_mouse_previous.py` from that date.
+
+- **Pinch missed with a bent middle finger.** When the middle finger bends toward the camera (palm facing it),
+  MediaPipe reads the finger as straight and `t-mid` stays at about 0.43 although the thumb touches it. This is a
+  landmark-model limitation. The user was asked to save snapshots (S) of it; analyse them before changing
+  thresholds.
+- **Dim-light blur.** Possibly try a shorter camera exposure (`CAP_PROP_EXPOSURE`). At open, MSMF reports
+  auto exposure 0.0, exposure -5. This was never tested, so verify on the laptop and revert if the picture gets
+  too dark.
+- **No window-switch gesture.** Window switching was removed together with second-hand gestures. It could be
+  given to the main hand if the user wants it back.
+- **Spurious "main hand changed" log lines** used to be common. The newer role logic logs only real side
+  switches; keep it quiet.
+- **Hand finder licence.** It is free for non-commercial use (HaGRID, Ultralytics export), which is fine for this
+  personal app.
+
+## Working style that worked well
+
+- **Measure, then change.** Reproduce with the user's own screenshots or snapshots, or a synthetic test, and
+  report numbers (before -> after).
+- **One change at a time:** deploy, then check the log right away. Tell the user in simple words what changed,
+  how to use it, and what still won't work.
+- **Keep `README.md`, the module docstring and `HELP_HTML` in sync with gesture changes.**
