@@ -23,7 +23,7 @@ make a fist twice quickly - remembered until the right hand does the same):
 
 Keyboard shortcuts with the other hand (your LEFT hand); pinches act when the thumb lets go:
   Alt+Tab         thumb on index fingertip. Hold it: the window switcher stays open, move the hand left /
-                  right to pick a window, let go to switch to it
+                  right to pick a window (stops at the first / last one), let go to switch to it
   Ctrl+C / Ctrl+V thumb on middle / ring fingertip
   Ctrl+Z          thumb across the palm on the base of the little finger; twice quickly = Ctrl+Y
   Print Screen    thumb on middle AND ring fingertips
@@ -241,6 +241,7 @@ KEY_RELEASE_DELAY = 0.18    # the thumb must be away this long (s) before a pinc
 ALT_TAB_RELEASE = 0.30      # ...while the window switcher is open (moving the hand blurs it)
 ALT_TAB_HOLD = 0.5          # thumb held on the index fingertip this long (s) keeps the window switcher open
 ALT_TAB_STEP = 0.05         # move the hand this far (fraction of the picture width) for each next window
+ALT_TAB_STOP_AT_ENDS = True # the selection stops at the first / last window instead of wrapping around
 KEY_FIST_MAX = 1.5          # a fist held longer than this (s) does nothing when it opens (a resting hand)
 KEY_THUMB_HOLD = 0.35       # thumbs-up held this long (s) presses play / pause (once per thumbs-up)
 
@@ -1239,7 +1240,7 @@ class SecondHandKeys:
     def _clear(self):
         self.touching, self.counts, self.start, self.last_raw = False, {}, 0.0, -1e9
         self.dists, self.spoiled, self.fist_reads = {}, "", 0     # distances of the touch's fingertip frames
-        self.sw_x = None
+        self.sw_x, self.sw_index, self.sw_count = None, 0, None
         self.fist_since, self.fist_frames, self.fist_ok = None, 0, False
         self.thumb_since, self.thumb_last, self.thumb_fired = None, -1e9, False
 
@@ -1346,10 +1347,14 @@ class SecondHandKeys:
 
     def _open_switcher(self, h: Hand):
         self.switcher, self.sw_x = True, h.center[0]
+        count = getattr(self.mouse, "alt_tab_count", None)
+        self.sw_count = count() if ALT_TAB_STOP_AT_ENDS and count is not None else None
+        self.sw_index = 1 if self.sw_count is None or self.sw_count > 1 else 0   # Alt+Tab selects the 2nd one
         if hasattr(self.mouse, "key"):
             self.mouse.key(_VK_NAMES["alt"], True)
             self.mouse.keys([_VK_NAMES["tab"]])
-        log.info("second hand: Alt+Tab held - move the hand left / right to pick a window, let go to switch")
+        log.info("second hand: Alt+Tab held (%s windows) - move the hand left / right to pick one, let go to switch",
+                 self.sw_count if self.sw_count is not None else "?")
 
     def _switch_step(self, h: Hand, k: float):
         step = ALT_TAB_STEP * k
@@ -1358,8 +1363,12 @@ class SecondHandKeys:
             if abs(dx) < step:
                 break
             d = 1 if dx > 0 else -1
-            if hasattr(self.mouse, "keys"):
-                self.mouse.keys([_VK_NAMES["right" if d > 0 else "left"]])
+            # at the first / last window: no key (Windows would wrap around), but the start point still follows
+            # the hand, so moving back goes back at once
+            if self.sw_count is None or 0 <= self.sw_index + d < self.sw_count:
+                self.sw_index += d
+                if hasattr(self.mouse, "keys"):
+                    self.mouse.keys([_VK_NAMES["right" if d > 0 else "left"]])
             self.sw_x += d * step
             dx -= d * step
 
@@ -2004,6 +2013,45 @@ SWIPE_KEYS = {
 }
 
 
+def alt_tab_windows() -> list:
+    """Top-level windows the Alt+Tab switcher lists (current virtual desktop), the way Windows picks them:
+    visible, not a tool window, not cloaked (other desktop / suspended app), and the window Alt+Tab shows for its
+    owner chain (an app with a dialog open is listed once)."""
+    import ctypes
+    import ctypes.wintypes as wt
+    u, dwm = ctypes.windll.user32, ctypes.windll.dwmapi
+    u.GetAncestor.restype = u.GetLastActivePopup.restype = wt.HWND
+    u.GetAncestor.argtypes = [wt.HWND, ctypes.c_uint]
+    u.GetLastActivePopup.argtypes = [wt.HWND]
+    found = []
+
+    def listed(h) -> bool:
+        if not u.IsWindowVisible(h) or u.GetWindowLongW(h, -20) & 0x80:      # WS_EX_TOOLWINDOW
+            return False
+        walk, tried = None, u.GetAncestor(h, 3)                             # GA_ROOTOWNER
+        while tried != walk:
+            walk, tried = tried, u.GetLastActivePopup(tried)
+            if u.IsWindowVisible(tried):
+                break
+        if walk != h:
+            return False
+        cloaked = ctypes.c_int(0)
+        dwm.DwmGetWindowAttribute(h, 14, ctypes.byref(cloaked), 4)         # DWMWA_CLOAKED
+        if cloaked.value:
+            return False
+        cls = ctypes.create_unicode_buffer(64)
+        u.GetClassNameW(h, cls, 64)
+        return cls.value not in ("Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd")
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, wt.HWND, wt.LPARAM)
+    def each(h, _):
+        if listed(h):
+            found.append(h)
+        return True
+    u.EnumWindows(each, 0)
+    return found
+
+
 class WinMouse:
     _FLAGS = {"left": (0x0002, 0x0004), "right": (0x0008, 0x0010), "middle": (0x0020, 0x0040),
               "x1": (0x0080, 0x0100), "x2": (0x0080, 0x0100)}     # x1 = mouse button 4, x2 = button 5
@@ -2076,6 +2124,14 @@ class WinMouse:
         for vk in reversed(vks):
             self.key(vk, False)
             time.sleep(0.01)
+
+    def alt_tab_count(self) -> int | None:
+        """How many windows the Alt+Tab switcher lists (None if it can't be told)."""
+        try:
+            return len(alt_tab_windows())
+        except Exception as e:
+            log.warning("could not count the Alt+Tab windows: %s", e)
+            return None
 
     def toggle_keyboard(self):
         """Open the Windows on-screen keyboard, or close it when it is open."""
@@ -2319,7 +2375,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
 <h3>Left hand: keyboard shortcuts</h3>
 <p class="lead">With your other hand (the left one). A pinch acts when the thumb lets go. These are the default shortcuts; they can be changed in <code>SECOND_KEYS</code> at the top of hand_mouse.py.</p>
 <div class="grid">
- <div class="card"><h2>Switch window (Alt+Tab)</h2><p>Thumb on the <b>index</b> fingertip and let go: back to the last window. <b>Hold</b> it: the window switcher stays open; move the hand left / right to pick a window, let go to switch to it.</p></div>
+ <div class="card"><h2>Switch window (Alt+Tab)</h2><p>Thumb on the <b>index</b> fingertip and let go: back to the last window. <b>Hold</b> it: the window switcher stays open; move the hand left / right to pick a window (it stops at the first and last one), let go to switch to it.</p></div>
  <div class="card"><h2>Copy (Ctrl+C)</h2><p>Thumb on the <b>middle</b> fingertip.</p></div>
  <div class="card"><h2>Paste (Ctrl+V)</h2><p>Thumb on the <b>ring</b> fingertip.</p></div>
  <div class="card"><h2>Undo / redo (Ctrl+Z / Ctrl+Y)</h2><p>Palm to the camera, thumb across the palm on the <b>base of the little finger</b> (like button 5). Once = undo, <b>twice quickly</b> = redo.</p></div>

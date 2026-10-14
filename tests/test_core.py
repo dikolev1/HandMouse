@@ -18,6 +18,7 @@ class FakeMouse:
     def keys(s, vks): s.events.append(('keys', tuple(vks)))
     def key(s, vk, down): s.events.append(('key', vk, down))
     def toggle_keyboard(s): s.events.append(('osk',))
+    def alt_tab_count(s): return getattr(s, 'windows', None)
 
 # open hand, palm to camera, fingers up (world metres, y down)
 OPEN = {0:(0,0.04,0),1:(-0.03,0.02,0),2:(-0.045,0,0),3:(-0.055,-0.02,0),4:(-0.06,-0.035,0),

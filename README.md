@@ -53,7 +53,7 @@ fingertips counts as the two. Each one is logged (pink) in the camera & log wind
 
 | Shortcut | Gesture |
 |---|---|
-| Alt+Tab (switch window) | Thumb on the index fingertip, let go: back to the last window. **Hold** it half a second: the window switcher stays open; move the hand left / right to pick a window (one window per few cm), let go to switch to it |
+| Alt+Tab (switch window) | Thumb on the index fingertip, let go: back to the last window. **Hold** it half a second: the window switcher stays open; move the hand left / right to pick a window (one window per few cm), let go to switch to it. The selection stops at the first and last window instead of jumping around to the other end; moving back goes back at once (`ALT_TAB_STOP_AT_ENDS`) |
 | Ctrl+C (copy) | Thumb on the middle fingertip |
 | Ctrl+V (paste) | Thumb on the ring fingertip |
 | Ctrl+Z (undo) / Ctrl+Y (redo) | Palm to the camera, thumb across the palm on the base of the little finger (like button 5). Once = undo, twice quickly = redo. A single one waits about half a second to see whether a second follows |

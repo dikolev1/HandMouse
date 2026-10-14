@@ -84,7 +84,7 @@ is clearly wide open (so "twice" taps don't merge); 2 fist frames in a row cance
 
 | Gesture (second hand) | Default | Notes |
 |---|---|---|
-| Thumb on index tip | Alt+Tab | Held `ALT_TAB_HOLD` 0.5 s: Alt stays down, hand moves `ALT_TAB_STEP` -> Left/Right arrow, release -> Alt up. Alt is also let go on hand lost, gestures off, `release_all` |
+| Thumb on index tip | Alt+Tab | Held `ALT_TAB_HOLD` 0.5 s: Alt stays down, hand moves `ALT_TAB_STEP` -> Left/Right arrow, release -> Alt up. `ALT_TAB_STOP_AT_ENDS`: the app counts the switcher's windows (`alt_tab_windows`: Raymond Chen's owner-chain rule + not cloaked + not tool window; matched the switcher on the laptop), follows the selection itself (starts at index 1) and sends no arrow past either end; the start point still follows the hand so moving back works at once. Reading the switcher with UI Automation was tried: it returned 0 items in 3 of 4 tries, so it isn't used. Alt is also let go on hand lost, gestures off, `release_all` |
 | Thumb on middle / ring tip | Ctrl+C / Ctrl+V | |
 | Thumb on little-finger base | Ctrl+Z; twice Ctrl+Y | Same spot test as button 5 |
 | Thumb on middle + ring | Print Screen | |

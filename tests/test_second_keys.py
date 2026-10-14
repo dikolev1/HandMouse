@@ -194,6 +194,31 @@ check("both hands in view, opened relaxed -> Esc", keys(m) == ESC, keys(m))
 m, e = run(N(14, only_left()) + N(3, only_left("fist")) + N(2, only_left()) + N(30, lambda t: []))
 check("left alone: quick fist, then the hand leaves -> Esc still", keys(m) == ESC, keys(m))
 
+# ---- Alt+Tab stops at the first / last window instead of wrapping around
+def run_w(frames, windows, fps=16):
+    m = V.FakeMouse(); m.windows = windows; e = hm.Engine(m, 0, 0, 1920, 1080); t = 0.0
+    for f in frames:
+        hs = f(t); e.update(hs if isinstance(hs, list) else [hs], t); t += 1 / fps
+    return m, e
+arrows = lambda m: ["R" if x == ("keys", (K["right"],)) else "L" for x in keys(m) if x in (("keys", (K["right"],)), ("keys", (K["left"],)))]
+far_right = N(10, both("index")) + [both("index", 0.3 + 0.012 * k) for k in range(1, 31)]     # ~7 steps right
+m, e = run_w(START + far_right + REST, 4)
+check("4 windows, hand moves 7 steps right -> only 2 Rights (stops on the last window)", arrows(m) == ["R", "R"], arrows(m))
+back = far_right + [both("index", 0.66 - 0.012 * k) for k in range(1, 8)]                    # then ~1.5 steps back
+m, e = run_w(START + back + REST, 4)
+check("...then a small move back left -> Left at once", arrows(m) == ["R", "R", "L"], arrows(m))
+far_left = N(10, both("index", 0.5)) + [both("index", 0.5 - 0.012 * k) for k in range(1, 26)]
+m, e = run_w(START + far_left + REST, 4)
+check("4 windows, hand moves far left -> 1 Left (stops on the first window)", arrows(m) == ["L"], arrows(m))
+m, e = run_w(START + far_right + REST, 1)
+check("only 1 window -> no arrows", arrows(m) == [] and keys(m)[-1] == ("key", ALT, False), keys(m))
+m, e = run_w(START + far_right + REST, None)
+check("window count unknown -> arrows as before (no stop)", len(arrows(m)) >= 6, arrows(m))
+hm.ALT_TAB_STOP_AT_ENDS = False
+m, e = run_w(START + far_right + REST, 4)
+check("ALT_TAB_STOP_AT_ENDS = False -> wraps like Windows", len(arrows(m)) >= 6, arrows(m))
+hm.ALT_TAB_STOP_AT_ENDS = True
+
 # ---- settings
 hm.SECOND_HAND_KEYS = False
 m, e = run(START + N(5, both("middle")) + REST)
