@@ -185,8 +185,12 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
 - **3D depth also breaks the held "OK" sign when the hand moves** (Alt+Tab switcher, 2026-10-14 debug
   pictures): thumb clearly on the index tip, but `t-idx` read 0.53-0.65 (> `TOUCH_OFF`), so the switcher let go
   after 0.5-0.8 s. A held "index" touch now also stays held while the thumb is within `INDEX_HOLD_2D` 0.30 of
-  the index tip in the picture (`thumb_index_2d`; shown as "(2d ...)" in the live numbers). 2D only keeps a
-  touch, never starts one. Debug pictures print each frame's thumb distances ("idx 3D/2D mid ring") under it,
+  the index tip in the picture (`thumb_index_2d`; shown as "(2d ...)" in the live numbers).
+- **The left "OK" sign also reads too far apart to start** (same day, "need to hold every gesture", 14 of 83
+  touches "too short"): held, 3D was 0.26-0.38 against the click limit 0.34. The log's 3D/2D pairs (203 samples)
+  separate well in 2D: held < 0.3, open > 0.6. So the index touch starts at 3D < `SECOND_INDEX_ON` 0.40, or
+  2D < `INDEX_START_2D` 0.30 with 3D < `INDEX_START_3D_MAX` 0.60. Middle / ring keep `TOUCH_ON` (they read
+  0.16-0.27 held). Debug pictures print each frame's thumb distances ("idx 3D/2D mid ring") under it,
   because re-reading hands from the saved frames doesn't work (drawn skeleton, 480 px).
 - **Toggles need a real release.** Two fists used to switch on and off forever, because one dropped frame looked
   like "released". Re-arming now needs an open hand, or no hands, for 0.4 s.

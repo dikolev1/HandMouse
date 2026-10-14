@@ -234,8 +234,30 @@ check("switcher open, hand moving with depth misread for 1.9 s -> still open, Al
       ks.count(("key", ALT, True)) == 1 and ("key", ALT, False) not in ks and arrows(m) == ["R"] * 4, (arrows(m), ks[-2:]))
 m, e = run_w(START + moving + REST, 8)
 check("...then the hand really opens -> let go once", keys(m).count(("key", ALT, False)) == 1, keys(m)[-2:])
-m, e = run(START + N(12, lambda t: [ok_depth_off(), right()]) + REST)
-check("depth misread alone (no pinch seen before) -> no Alt+Tab", keys(m) == [], keys(m))
+m, e = run(START + N(12, lambda t: [ok_depth_off(dz=0.066), right()]) + REST)
+check("thumb far behind the index in depth (3D 0.7), never touched before -> no Alt+Tab", keys(m) == [], keys(m))
+
+# ---- the left "OK" sign reads 0.26-0.38 in 3D while held (a click starts below 0.34): it must still start
+def ok_3d(d3, d2_off=0.0, px=0.3):
+    """Thumb d3 palm lengths from the index tip in 3D; in the picture on the tip, or moved d2_off (metres) to the
+    outside of the index finger (away from the middle finger). The rest of the distance is depth."""
+    h = left("index", px); w = h.world; t = w[8]; L = hm.palm_length(h)
+    x, y = t[0] - d2_off, t[1]
+    z = t[2] - max((d3 * L) ** 2 - d2_off ** 2, 0.0) ** 0.5
+    return with_thumb(h, (x, y, z))
+for d3, d2_off, want, why in ((0.37, 0.0, True, "held OK sign read 0.37 in 3D"),
+                              (0.36, 0.024, True, "screenshot 2026-10-14: 3D 0.35, 2D 0.44"),
+                              (0.52, 0.0, True, "3D 0.52 but on the index tip in the picture"),
+                              (0.70, 0.0, False, "thumb behind the index (hand edge-on): 3D 0.70"),
+                              (0.55, 0.06, False, "3D 0.55 and 2D 0.7: open-ish hand")):
+    h = ok_3d(d3, d2_off)
+    m, e = run(START + N(4, lambda t, h=h: [h, right()]) + REST)
+    got = keys(m) == [("keys", (ALT, K["tab"]))]
+    check(f"{why} (3D {h.side['x1']:.2f}, 2D {hm.thumb_index_2d(h):.2f}) -> {'Alt+Tab' if want else 'nothing'}",
+          got == want, keys(m))
+m, e = run(START + N(5, both("middle")) + REST)
+check("thumb on the middle tip is still Ctrl+C (not taken by the easier index start)",
+      keys(m) == [("keys", (CTRL, ord("C")))], keys(m))
 
 # ---- settings
 hm.SECOND_HAND_KEYS = False

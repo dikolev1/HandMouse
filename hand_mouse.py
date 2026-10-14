@@ -243,6 +243,11 @@ ALT_TAB_RELEASE = 0.30      # ...while the window switcher is open (moving the h
 ALT_TAB_HOLD = 0.5          # thumb held on the index fingertip this long (s) keeps the window switcher open
 ALT_TAB_STEP = 0.05         # move the hand this far (fraction of the picture width) for each next window
 ALT_TAB_STOP_AT_ENDS = True # the selection stops at the first / last window instead of wrapping around
+SECOND_INDEX_ON = 0.40      # the second hand's index pinch ("OK" sign) starts below this in 3D (the clicks use
+                            # TOUCH_ON 0.34): a held left "OK" reads 0.26-0.38, an open hand 0.45-0.8 (log 2026-10-14)
+INDEX_START_2D = 0.30       # ...or when the thumb is this close to the index tip in the picture while 3D is under
+INDEX_START_3D_MAX = 0.60   # this (a thumb behind the index, hand edge-on, reads far in 3D). Held: 2D < 0.3 in 61
+                            # of 66 samples; open: 2D > 0.6
 INDEX_HOLD_2D = 0.30        # a held index pinch also stays held while the thumb tip is this close to the index
                             # tip in the picture (x palm length in the picture). The hand model's depth guess
                             # reads 0.5-0.65 in 3D (= apart) while the "OK" sign is clearly held and the hand
@@ -1234,6 +1239,10 @@ def second_contact(h: Hand, held: str | None = None) -> str | None:
     if min(d.values()) >= (TOUCH_OFF if held else TOUCH_ON):
         if held == "index" and thumb_index_2d(h) < INDEX_HOLD_2D:
             return "index"              # depth misread while the "OK" sign is held: the picture decides
+        if held is None and d["index"] == min(d.values()) and (
+                d["index"] < SECOND_INDEX_ON
+                or (d["index"] < INDEX_START_3D_MAX and thumb_index_2d(h) < INDEX_START_2D)):
+            return classify_tips(d)     # the left "OK" sign reads further apart than a click: easier to start
         return None
     return classify_tips(d)
 
