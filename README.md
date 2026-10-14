@@ -21,6 +21,12 @@ Control the Windows mouse with your hands through the laptop webcam. Everything 
   - **Gestures help** opens a one-page summary of all gestures.
   - **Start with Windows** starts the app automatically when you log in.
   - **Re-learn my hand size**: hold your open hand up for a few seconds at your usual distance.
+  - **Debug: save a picture of every gesture** (off by default, remembered): every gesture the app recognises
+    (clicks, buttons, scroll, volume, left-hand shortcuts, two fists, and pinches it cancelled or found too short)
+    saves a picture to the `debug` folder next to `hand_mouse.py`: 8 camera frames from the last 1.2 seconds with
+    the hands drawn in, the log line as the title and each hand's numbers. The file name starts with the date and
+    time, so it matches the line in `hand_mouse.log`. When a gesture misfires, the picture shows what the app saw.
+    The oldest pictures are deleted when the folder passes 300 MB (`DEBUG_KEEP_MB`). Turn it off when done.
   - **Close Hand Mouse**.
 - Double-clicking the desktop icon while the app is running opens the camera & log window.
 

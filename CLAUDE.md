@@ -29,6 +29,7 @@ care that it works reliably; when unsure, measure before claiming something help
 | `hand_mouse_previous.py` | Backup of the version before the last change (by convention, refreshed before every deploy). |
 | `gestures.html` | Help page, regenerated from `HELP_HTML` in the code every time it is opened. |
 | `snapshots/` | Plain camera frames saved with **S** in the camera window, for debugging missed gestures. |
+| `debug/` | Debug mode pictures (tray: "Debug: save a picture of every gesture", state key `debug_pictures`, off by default). One JPEG per recognised gesture: 8 frames over the last 1.2 s with landmarks, the log line(s) as title, per-hand numbers. Named `YYYYMMDD_HHMMSS_mmm <what>.jpg` to match the log. **Ask the user for these when a gesture misfires.** Not in git. |
 | `setup.bat`, `run_preview.bat`, `start_background.bat`, `requirements.txt`, `python_path.txt` | Install / launch helpers. `python_path.txt` holds the Python used (Python 3.12 in `%LOCALAPPDATA%\Programs\Python\Python312`). |
 | `YOLOv10n_hands.pt` | Original PyTorch weights of the hand finder. Not used by the app; can be deleted. |
 
@@ -233,6 +234,10 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
   - `t-ring-base`: button 5
   - `size`, the state of each gesture, and the cursor box
   - **S** saves a clean frame to `snapshots/`, **P** stops/resumes, **Esc** closes the window.
+- **Debug pictures** (`GestureRecorder`, a logging handler): gesture log lines (`DEBUG_EVENTS`) are queued; the
+  main loop keeps the last `DEBUG_SPAN` s of 480-wide frames + landmarks (`add`) and after each frame saves one
+  strip for the queued lines (`save_pending`, at most one per 0.25 s, written by a background thread, folder pruned
+  to `DEBUG_KEEP_MB`). Don't name a handler method `flush`: logging calls it with no arguments at exit.
 - **Events in the log:** clicks, buttons, scroll on/off, volume on/off, gestures off/on, main hand
   switch, colour-view switches, the hand finder loading, camera settings at open.
 

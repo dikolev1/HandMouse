@@ -50,6 +50,7 @@ import argparse
 import logging
 import math
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -301,6 +302,16 @@ AUTO_RESTART_ON_EDIT = True # restart automatically when this file changes
 TRAY_ICON = True            # icon next to the clock: left-click = stop / resume tracking, right-click = menu
 DIAGNOSTICS = True          # write finger measurements to hand_mouse.log once a second (for tuning)
 LOG_MAX_MB = 2              # the log file is rotated at this size (keeps 2 old copies)
+
+# Debug pictures (also on / off in the tray menu, remembered): every gesture the app recognises - clicks, buttons,
+# scroll, volume, second-hand shortcuts, two fists, also pinches that were cancelled or too short - saves one
+# picture to the "debug" folder: the last DEBUG_SPAN seconds of camera frames as a strip of DEBUG_FRAMES
+# pictures with the hands drawn in, the log line(s) as the title and each hand's live numbers. The file name
+# starts with the date and time, so it matches the line in hand_mouse.log.
+DEBUG_PICTURES = False      # off by default
+DEBUG_FRAMES = 8            # pictures per strip (the last one is the moment the gesture was recognised)
+DEBUG_SPAN = 1.2            # seconds of camera frames before the gesture
+DEBUG_KEEP_MB = 300         # the oldest debug pictures are deleted when the folder gets bigger than this
 
 # ========================================================================
 
@@ -2395,6 +2406,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
 <li>If gestures feel too big or too small after you change where you sit, use <b>Re-learn my hand size</b> and hold your open hand up for a few seconds.</li>
 <li>The cursor box (grey rectangle in the camera window) follows your hand when your finger stays outside it, and slowly fits its size to how far you usually move. The cursor doesn't jump when it does.</li>
 <li><b>Camera &amp; log window</b> shows what the app sees (green = main hand, orange = second hand), what it is doing right now, and a log of every click, button, scroll and swipe it recognised. <kbd>P</kbd> stops/resumes, <kbd>Esc</kbd> closes the window (the app keeps running).</li>
+<li><b>Debug: save a picture of every gesture</b> (tray menu, off by default): each recognised gesture saves a strip of camera frames to the <code>debug</code> folder, to find out why a gesture misfired.</li>
 <li>Keys: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>H</kbd> stop/resume, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> re-learn hand size, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Q</kbd> quit.</li></ul>
 </main></body></html>
 """
@@ -2437,8 +2449,10 @@ class TrayIcon:
     Left-click: stop / resume tracking.  Right-click: menu."""
 
     def __init__(self, is_paused, on_toggle, on_close, view_shown=None, on_view=None, on_relearn=None,
-                 gestures_off=None, on_gestures=None):
+                 gestures_off=None, on_gestures=None, debug_on=None, on_debug=None):
         self.is_paused, self.on_toggle, self.on_close = is_paused, on_toggle, on_close
+        self.debug_on = debug_on or (lambda: False)
+        self.on_debug = on_debug or (lambda: None)
         self.gestures_off = gestures_off or (lambda: False)
         self.on_gestures = on_gestures or (lambda: None)
         self.view_shown = view_shown or (lambda: False)
@@ -2473,6 +2487,8 @@ class TrayIcon:
                 pystray.Menu.SEPARATOR,
                 item("Start with Windows", toggle_autostart, checked=lambda it: autostart_enabled()),
                 item("Re-learn my hand size", lambda icon, it: self.on_relearn()),
+                item("Debug: save a picture of every gesture", lambda icon, it: self.on_debug(),
+                     checked=lambda it: self.debug_on()),
                 pystray.Menu.SEPARATOR,
                 item("Close Hand Mouse", lambda icon, it: self.on_close()),
             )
@@ -3087,6 +3103,165 @@ def draw_preview(cv2, frame, hands, engine, fps, paused, extra="", text_on_image
         cv2.putText(frame, text, (8, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5 * f, (255, 255, 255), 1)
 
 
+# log lines that are a recognised gesture (any line containing one of these), and lines that are not
+DEBUG_EVENTS = ("click", "button", "scroll mode", "volume control", "second hand", "both fists", "gestures off",
+                "gestures on", "main hand", "swipe")
+DEBUG_IGNORE = ("second hand finder", "snapshot saved", "debug pictures")
+DEBUG_TILE_W = 480              # width of one picture in the strip
+
+
+class GestureRecorder(logging.Handler):
+    """Debug mode (DEBUG_PICTURES): a picture of every gesture the app recognised. It listens to the log for
+    gesture lines, keeps the last DEBUG_SPAN seconds of small camera frames with the hands' positions, and after
+    each frame with gesture lines draws a strip of frames and saves it (in a background thread)."""
+
+    def __init__(self, folder: str, on: bool = False):
+        super().__init__(logging.INFO)
+        from collections import deque
+        self.folder, self.on = folder, on
+        self.frames = deque()           # (time, small picture, [(role, points, zoomed)], status lines)
+        self.events = deque()           # gesture log lines waiting for their picture
+        self.saved = 0
+        self.last_save = -1e9
+        self.jobs = None                # queue of (path, picture) for the writer thread
+
+    def emit(self, record):
+        if not self.on:
+            return
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return
+        m = msg.lower()
+        if any(k in m for k in DEBUG_EVENTS) and not any(k in m for k in DEBUG_IGNORE):
+            self.events.append((record.created, msg))
+
+    def add(self, cv2, frame, hands, status, now: float):
+        """Every frame while on (before anything is drawn on the frame)."""
+        if not self.on:
+            self.frames.clear()
+            self.events.clear()
+            return
+        h, w = frame.shape[:2]
+        small = cv2.resize(frame, (DEBUG_TILE_W, int(h * DEBUG_TILE_W / w)), interpolation=cv2.INTER_AREA)
+        self.frames.append((now, small, [(hd.role, list(hd.img), hd.zoomed) for hd in hands], list(status)))
+        while self.frames and now - self.frames[0][0] > DEBUG_SPAN:
+            self.frames.popleft()
+
+    def save_pending(self, cv2, np, now: float):
+        """After the frame's gestures were handled: one picture for the gesture lines that came in. Returns
+        the file path (or None)."""
+        if not self.on or not self.events or not self.frames or now - self.last_save < 0.25:
+            return None
+        events = []
+        while self.events:
+            events.append(self.events.popleft())
+        msgs = [m for _, m in events]
+        sheet = self.sheet(cv2, np, msgs)
+        t = events[0][0]
+        stamp = time.strftime("%Y%m%d_%H%M%S", time.localtime(t)) + f"_{int(t * 1000) % 1000:03d}"
+        path = os.path.join(self.folder, f"{stamp} {self.short(msgs)}.jpg")
+        self.last_save = now
+        self._write(cv2, path, sheet)
+        return path
+
+    @staticmethod
+    def short(msgs: list) -> str:
+        """A few words for the file name: the last line, or what a second-hand touch was read as."""
+        m = msgs[-1]
+        if m.startswith("second hand touch") and "->" in m:
+            m = "second hand touch -> " + m.split("->", 1)[1]
+        m = re.sub(r"[^A-Za-z0-9+ ,.()-]+", " ", m)
+        return re.sub(r"\s+", " ", m).strip()[:70] or "gesture"
+
+    def sheet(self, cv2, np, msgs: list):
+        """The strip: up to DEBUG_FRAMES frames spread over the last DEBUG_SPAN seconds (the last one = now),
+        hands drawn in, with the time before the gesture; the log lines and the live numbers on top."""
+        frames = list(self.frames)
+        n = min(DEBUG_FRAMES, len(frames))
+        picks = [frames[round(i * (len(frames) - 1) / max(n - 1, 1))] for i in range(n)]
+        t_end = frames[-1][0]
+        tiles = []
+        for i, (t, img, hands, _) in enumerate(picks):
+            img = img.copy()
+            th, tw = img.shape[:2]
+            for role, pts, zoomed in hands:
+                pts = [(int(x * tw), int(y * th)) for x, y in pts]
+                color = ROLE_COLORS.get(role, (150, 150, 150))
+                for a, b in HAND_CONNECTIONS:
+                    cv2.line(img, pts[a], pts[b], color, 1)
+                for j in (THUMB_TIP, INDEX_TIP, MIDDLE_TIP, RING_TIP, 20):
+                    cv2.circle(img, pts[j], 3, (255, 255, 255) if j == THUMB_TIP else color, -1)
+                cv2.putText(img, role + (" zoom" if zoomed else ""),
+                            (pts[WRIST][0] - 20, min(pts[WRIST][1] + 16, th - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
+                            color, 1)
+            label = "now" if i == n - 1 else f"-{t_end - t:.2f} s"
+            cv2.putText(img, label, (6, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3)
+            cv2.putText(img, label, (6, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
+            if i == n - 1:
+                cv2.rectangle(img, (0, 0), (tw - 1, th - 1), (0, 0, 255), 3)
+            tiles.append(img)
+        cols = min(4, len(tiles))
+        while len(tiles) % cols:
+            tiles.append(np.zeros_like(tiles[0]))
+        grid = np.vstack([np.hstack(tiles[r:r + cols]) for r in range(0, len(tiles), cols)])
+        lines = [(m, (255, 255, 255)) for msg in msgs for m in _wrap(msg, 150)]
+        lines += [(m, (190, 190, 190)) for st in frames[-1][3] for m in _wrap(st, 150)]
+        head = np.full((14 + 20 * len(lines), grid.shape[1], 3), 30, np.uint8)
+        for i, (text, color) in enumerate(lines):
+            cv2.putText(head, text, (8, 22 + 20 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+        return np.vstack([head, grid])
+
+    def _write(self, cv2, path: str, img):
+        if self.jobs is None:
+            import queue
+            self.jobs = queue.Queue(maxsize=30)
+            threading.Thread(target=self._writer, args=(cv2,), daemon=True, name="debug-pictures").start()
+        try:
+            self.jobs.put_nowait((path, img))
+        except Exception:
+            pass                        # writer far behind: skip this picture rather than slow the tracking
+
+    def _writer(self, cv2):
+        while True:
+            path, img = self.jobs.get()
+            try:
+                os.makedirs(self.folder, exist_ok=True)
+                ok, data = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                if ok:
+                    with open(path, "wb") as f:
+                        f.write(data.tobytes())
+                    self.saved += 1
+                    if self.saved % 20 == 1:
+                        self.prune()
+            except Exception as e:
+                log.warning("could not save a debug picture: %s", e)
+            finally:
+                self.jobs.task_done()
+
+    def prune(self):
+        """Delete the oldest pictures while the folder is bigger than DEBUG_KEEP_MB."""
+        try:
+            files = sorted((e for e in os.scandir(self.folder) if e.name.endswith(".jpg")),
+                           key=lambda e: e.stat().st_mtime)
+            total = sum(e.stat().st_size for e in files)
+            limit = DEBUG_KEEP_MB * 1024 * 1024
+            for e in files[:-1]:
+                if total <= limit:
+                    break
+                total -= e.stat().st_size
+                os.remove(e.path)
+        except OSError:
+            pass
+
+    def wait(self):
+        """Wait until every picture is written (tests, quitting)."""
+        if self.jobs is not None:
+            self.jobs.join()
+
+
+RECORDER = GestureRecorder(os.path.join(HERE, "debug"), DEBUG_PICTURES)
+
 PANEL_W = 470
 
 
@@ -3368,9 +3543,21 @@ def run(preview: bool) -> bool:
     def toggle_gestures():
         engine.set_gestures(engine.gestures_off)
 
+    RECORDER.on = bool(state.get("debug_pictures", DEBUG_PICTURES))
+
+    def toggle_debug():
+        RECORDER.on = not RECORDER.on
+        save_state(debug_pictures=RECORDER.on)
+        log.info("debug pictures %s (folder %s)", "on" if RECORDER.on else "off", RECORDER.folder)
+        tray.refresh()
+        if RECORDER.on:
+            tray.notify("Debug on: every gesture saves a picture to the debug folder in the Hand Mouse folder. "
+                        "Turn it off in this menu when you are done.")
+
     tray = TrayIcon(pause_evt.is_set, toggle_pause, quit_evt.set,
                     view_shown=view_evt.is_set, on_view=toggle_view, on_relearn=relearn,
-                    gestures_off=lambda: engine.gestures_off, on_gestures=toggle_gestures)
+                    gestures_off=lambda: engine.gestures_off, on_gestures=toggle_gestures,
+                    debug_on=lambda: RECORDER.on, on_debug=toggle_debug)
 
     def show_requested():
         view_evt.set()
@@ -3515,8 +3702,11 @@ def run(preview: bool) -> bool:
             frames += 1
             frames_total += 1
             tick = now - fps_t >= 1.0
-            engine.want_status = view_evt.is_set() or (tick and DIAGNOSTICS)
+            engine.want_status = view_evt.is_set() or (tick and DIAGNOSTICS) or RECORDER.on
             engine.update(hands, now)
+            if RECORDER.on or RECORDER.frames:
+                RECORDER.add(cv2, frame, hands, engine.status, now)
+                RECORDER.save_pending(cv2, np, now)
             if engine.both_fists_since is not None and not stop_warned:
                 stop_warned = True
                 beep(520, 120)          # countdown started
@@ -3565,6 +3755,8 @@ def run(preview: bool) -> bool:
                              " / ".join(engine.status[:-1]))
 
             if view_evt.is_set():
+                if RECORDER.on:
+                    engine.status.append(f"DEBUG ON: {RECORDER.saved} gesture pictures saved to the debug folder")
                 if snap_evt.is_set():       # the plain camera picture, for finding out why a gesture isn't seen
                     snap_evt.clear()
                     try:
@@ -3584,6 +3776,7 @@ def run(preview: bool) -> bool:
                 view.show(compose(frame))
     finally:
         engine.release_all(time.monotonic())
+        RECORDER.wait()
         if cap is not None:
             cap.release()
         view.stop()
@@ -3616,6 +3809,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s", handlers=handlers)
     log.addHandler(EVENTS)
+    log.addHandler(RECORDER)
 
     if sys.platform != "win32":
         print("This app controls the Windows mouse and must run on Windows.")
