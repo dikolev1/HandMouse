@@ -236,6 +236,9 @@ SECOND_KEYS = {
     "thumbs-up": "playpause",
 }
 KEY_DOUBLE_WINDOW = 0.45    # a second tap this soon (s) after letting go makes it "twice"
+KEY_RELEASE_DELAY = 0.18    # the thumb must be away this long (s) before a pinch counts as let go, so a few
+                            # misread frames don't split one pinch into two
+ALT_TAB_RELEASE = 0.30      # ...while the window switcher is open (moving the hand blurs it)
 ALT_TAB_HOLD = 0.5          # thumb held on the index fingertip this long (s) keeps the window switcher open
 ALT_TAB_STEP = 0.05         # move the hand this far (fraction of the picture width) for each next window
 KEY_FIST_MAX = 1.5          # a fist held longer than this (s) does nothing when it opens (a resting hand)
@@ -1182,27 +1185,40 @@ def key_label(text: str) -> str:
     return "+".join(p.strip().capitalize() for p in text.split("+"))
 
 
-def second_contact(h: Hand, held: str | None = None) -> str | None:
-    """What the thumb of the second hand touches now: "index", "middle", "ring", "index+middle", "middle+ring",
-    "little base", or None. held = the touch going on already (looser limits, so it doesn't flicker)."""
-    if sorted(h.ext)[2] < SIDE_STRAIGHT:
-        return None                     # fewer than two fingers straight: a fist or a closing hand
-    if thumb_on_palm_base(h, held == "little base"):
-        return "little base"
-    d = {"index": h.side["x1"], "middle": h.pinch[0], "ring": h.pinch[1]}
+def tip_distances(h: Hand) -> dict:
+    """Thumb tip to the index, middle and ring fingertips (3D, x palm length), like the clicks."""
+    return {"index": h.side["x1"], "middle": h.pinch[0], "ring": h.pinch[1]}
+
+
+def classify_tips(d: dict) -> str:
+    """Which fingertip(s) the thumb is on, from the three distances. Fingertips side by side sit close, so a
+    pair is told from a single tip by comparing the distances (like the middle click), not by fixed limits."""
     (n1, d1), (n2, d2), _ = sorted(d.items(), key=lambda kv: kv[1])
-    if d1 >= (TOUCH_OFF if held else TOUCH_ON):
-        return None
     pair = "+".join(n for n in d if n in (n1, n2))
     if pair in ("index+middle", "middle+ring") and d2 < TOUCH_OFF and d2 / max(d1, 1e-3) < BOTH_RATIO:
-        return pair                     # fingertips side by side sit close: compare, like the middle click
+        return pair
     return n1
 
 
+def second_contact(h: Hand, held: str | None = None) -> str | None:
+    """What the thumb of the second hand touches now: "index", "middle", "ring", "index+middle", "middle+ring",
+    "little base", or None. held = the touch going on already: looser limits, and bent fingers don't end it
+    (the hand model often reads the pinching and the relaxed fingers as bent)."""
+    if max(h.ext) < (FIST_CURL if held else SIDE_STRAIGHT):
+        return None                     # no finger straight: a fist or a closing hand
+    if thumb_on_palm_base(h, held == "little base"):
+        return "little base"
+    d = tip_distances(h)
+    if min(d.values()) >= (TOUCH_OFF if held else TOUCH_ON):
+        return None
+    return classify_tips(d)
+
+
 class SecondHandKeys:
-    """Keyboard shortcuts from the second hand (SECOND_KEYS). A pinch acts when the thumb lets go, as the
-    finger(s) it touched most; "twice" gestures wait for a possible second tap; the Alt+Tab pinch held keeps
-    the window switcher open; a fist presses its key when the hand opens; a thumbs-up when held."""
+    """Keyboard shortcuts from the second hand (SECOND_KEYS). A pinch acts when the thumb lets go, decided from
+    the median distances over the whole touch (a few misread frames don't change it); "twice" gestures wait for
+    a possible second tap; the Alt+Tab pinch held keeps the window switcher open; a fist presses its key when
+    the hand opens; a thumbs-up when held."""
 
     def __init__(self, mouse):
         self.mouse = mouse
@@ -1222,6 +1238,7 @@ class SecondHandKeys:
 
     def _clear(self):
         self.touching, self.counts, self.start, self.last_raw = False, {}, 0.0, -1e9
+        self.dists, self.spoiled, self.fist_reads = {}, "", 0     # distances of the touch's fingertip frames
         self.sw_x = None
         self.fist_since, self.fist_frames, self.fist_ok = None, 0, False
         self.thumb_since, self.thumb_last, self.thumb_fired = None, -1e9, False
@@ -1236,10 +1253,17 @@ class SecondHandKeys:
         self._clear()
 
     def dominant(self) -> str | None:
-        """The finger(s) touched most during this touch (a pair wins a tie)."""
-        if not self.counts:
+        """What this touch is so far: the base of the little finger if the thumb was there in at least half of
+        the frames, otherwise the fingertip(s) from the median distances."""
+        frames = sum(self.counts.values())
+        if not frames:
             return None
-        return max(self.counts, key=lambda n: (self.counts[n], "+" in n))
+        if self.counts.get("little base", 0) * 2 >= frames or not self.dists:
+            return "little base"
+        return classify_tips(self._medians())
+
+    def _medians(self) -> dict:
+        return {n: sorted(v)[len(v) // 2] for n, v in self.dists.items()}
 
     def update(self, h: Hand | None, now: float, k: float = 1.0, main_in_view: bool = True,
                two_fists: bool = False):
@@ -1251,36 +1275,64 @@ class SecondHandKeys:
                 self._end_touch(now, fire=False)        # hand gone mid-touch: let go, don't act
             self.fist_since = self.thumb_since = None
             return
-        if h.unsure:
-            return                      # finger shapes unreadable this frame: keep the state
+        if h.unsure:                    # finger shapes unreadable this frame: keep the state
+            if self.touching:
+                self.last_raw = now
+            return
         self._pinch(h, now, k)
         self._thumbs_up(h, now)
         self._fist(h, now, main_in_view, two_fists)
 
     # ---- pinches
     def _pinch(self, h: Hand, now: float, k: float):
-        c = second_contact(h, self.dominant() if self.touching else None)
+        held = self.dominant() if self.touching else None
+        c = second_contact(h, held)
+        if self.touching and max(h.ext) < FIST_CURL:
+            self.fist_reads += 1        # one misread frame doesn't cancel a pinch; two in a row do
+            if self.fist_reads >= 2:
+                self.spoiled = "the hand closed into a fist"
+        else:
+            self.fist_reads = 0
         if c is not None:
             self.last_raw = now
             if not self.touching:
                 self.touching, self.counts, self.start = True, {}, now
+                self.dists, self.spoiled = {}, ""
             self.counts[c] = self.counts.get(c, 0) + 1
+            if c != "little base":
+                for n, v in tip_distances(h).items():
+                    self.dists.setdefault(n, []).append(v)
             if self.switcher:
                 self._switch_step(h, k)
             elif (self.actions.get(self.dominant(), (None, ""))[1] == "Alt+Tab"
                   and now - self.start >= ALT_TAB_HOLD and sum(self.counts.values()) >= 3):
                 self._open_switcher(h)
-        elif self.touching and now - self.last_raw >= RELEASE_DELAY:
-            self._end_touch(now)
+        elif self.touching:
+            # let go: the thumb away long enough, or (a short pinch) clearly wide open in one frame, so the two
+            # taps of a "twice" don't merge
+            wide = (min(tip_distances(h).values()) > TOUCH_OFF + RELEASE_CLEAR
+                    and not h.side["x2"] < SIDE_TOUCH_OFF * 1.5)
+            wait = ALT_TAB_RELEASE if self.switcher else KEY_RELEASE_DELAY
+            if (self.spoiled or now - self.last_raw >= wait
+                    or (wide and not self.switcher and now - self.start < QUICK_RELEASE_HOLD)):
+                self._end_touch(now)
 
     def _end_touch(self, now: float, fire: bool = True):
         name, frames = self.dominant(), sum(self.counts.values())
-        self.touching, self.counts = False, {}
+        if DIAGNOSTICS and frames:
+            med = self._medians() if self.dists else {}
+            log.info("second hand touch %.2f s, %d frames: thumb to index %s middle %s ring %s (median), on the "
+                     "palm base %d -> %s%s", self.last_raw - self.start, frames, _num(med.get("index", math.inf)),
+                     _num(med.get("middle", math.inf)), _num(med.get("ring", math.inf)),
+                     self.counts.get("little base", 0), name,
+                     f" (cancelled: {self.spoiled})" if self.spoiled else (" (too short)" if frames < 2 else ""))
+        spoiled = self.spoiled
+        self.touching, self.counts, self.dists, self.spoiled = False, {}, {}, ""
         if self.switcher:
             self._close_switcher()
             return
-        if not fire or frames < 2 or name not in self.actions:
-            return                      # brushed past for a frame, or nothing set for it
+        if not fire or spoiled or frames < 2 or name not in self.actions:
+            return                      # brushed past, closed into a fist, or nothing set for it
         waiting, self.pending = self.pending, None
         if waiting and waiting[0] == name:
             self._do(name + " twice")

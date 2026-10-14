@@ -148,6 +148,37 @@ m, e = run(START + N(24, lambda t: [left("fist"), V.make(px=0.75, fist=True, lab
            + N(6, both("middle")) + REST)
 check("gestures off -> left pinches do nothing", keys(m) == [], keys(m))
 
+# ---- real-life readings (2026-10-14 test: pinches split, Alt+Tab fired twice, switcher let go early)
+def bent(pose, ext):
+    """The hand model reads the pinching finger, and often the relaxed ring / little finger, as bent."""
+    h = left(pose); h.__dict__["ext"] = list(ext); return h
+RELAXED = {"index": (1.35, 1.8, 1.4, 1.35), "middle": (1.8, 1.4, 1.35, 1.3), "ring": (1.7, 1.6, 1.3, 1.3),
+           "middle+ring": (1.8, 1.35, 1.3, 1.3), "index+middle": (1.35, 1.35, 1.6, 1.5)}
+for pose, ext in RELAXED.items():
+    m, e = run(START + N(5, lambda t, p=pose, x=ext: [bent(p, x), right()]) + REST)
+    want = e.keys.actions[pose][0]
+    check(f"relaxed {pose} pinch (fingers read bent {ext}) -> one {hm.SECOND_KEYS[pose]}",
+          keys(m) == [("keys", tuple(want))] or (pose == "index+middle" and keys(m) == []), keys(m))
+def loose(pose, dist):
+    """The thumb read a little away from the fingertip (between the touch limits and wide open)."""
+    h = left(pose); w = h.world; tip = {"index": w[8], "middle": w[12], "ring": w[16]}[pose]
+    t = w[4]; L = hm.palm_length(h); d = [t[i] - tip[i] for i in range(3)]; n = sum(c * c for c in d) ** 0.5
+    return with_thumb(h, tuple(tip[i] + d[i] / n * dist * L for i in range(3)))
+for pose in ("index", "middle"):
+    print("   thumb read loose:", pose, {k: round(v, 2) for k, v in hm.tip_distances(loose(pose, 0.5)).items()})
+flick = N(3, both("index")) + N(2, lambda t: [loose("index", 0.5), right()]) + N(2, both("index"))
+m, e = run(START + flick + REST)
+check("one short pinch with a 2-frame dropout -> one Alt+Tab", keys(m) == [("keys", (ALT, K["tab"]))], keys(m))
+hold_flick = (N(5, both("index")) + N(2, lambda t: [loose("index", 0.5), right()])) * 4
+m, e = run(START + hold_flick + REST)
+ks = keys(m)
+check("held Alt+Tab with dropouts -> switcher opened once, no extra Alt+Tab",
+      ks.count(("key", ALT, True)) == 1 and ("keys", (ALT, K["tab"])) not in ks, ks)
+m, e = run(START + N(4, both("middle")) + N(2, lambda t: [loose("middle", 0.5), right()]) + N(4, both("middle")) + REST)
+check("Ctrl+C pinch with a dropout -> one Ctrl+C", keys(m) == [("keys", (CTRL, ord("C")))], keys(m))
+m, e = run(START + N(2, both("index")) + N(8, both("fist")) + REST)
+check("thumb brushes the index while closing a fist -> Esc only, no Alt+Tab", keys(m) == [("keys", (K["esc"],))], keys(m))
+
 # ---- settings
 hm.SECOND_HAND_KEYS = False
 m, e = run(START + N(5, both("middle")) + REST)

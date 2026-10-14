@@ -75,8 +75,11 @@ hand does the same.
 
 **Second-hand keyboard shortcuts** (`SecondHandKeys`, map in `SECOND_KEYS`, tests in `test_second_keys.py`).
 `second_contact()` reads which tip(s) the thumb touches with the click logic (3D, `TOUCH_ON`/`TOUCH_OFF`,
-pairs by `BOTH_RATIO`) and the button-5 spot (`thumb_on_palm_base`, 2D). A pinch acts on **release**, as the
-contact seen in most frames (a pair wins a tie), and needs 2 frames. A gesture with a `"... twice"` entry waits
+pairs by `BOTH_RATIO`) and the button-5 spot (`thumb_on_palm_base`, 2D). A pinch acts on **release**, decided
+from the **median** thumb-to-tip distances over the touch (`classify_tips`), and needs 2 frames. It ends after
+`KEY_RELEASE_DELAY` 0.18 s apart (`ALT_TAB_RELEASE` 0.3 s with the switcher open), or at once when a short pinch
+is clearly wide open (so "twice" taps don't merge); 2 fist frames in a row cancel it. Every touch is logged
+(`second hand touch ... -> name`, with the medians) when `DIAGNOSTICS` is on. A gesture with a `"... twice"` entry waits
 `KEY_DOUBLE_WINDOW` 0.45 s before its single action.
 
 | Gesture (second hand) | Default | Notes |
@@ -172,6 +175,12 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
   about which hand shapes the hand passes through on the way to other gestures.
 - **Fist vs thumbs-up:** `thumb_out` (thumb tip outside the folded fingers' 2D box) separated the two perfectly
   on real video: fists ≤ 0.13, thumbs-ups ≥ 0.5. `is_fist` excludes thumb-out, so a thumbs-up never scrolls.
+- **Left-hand pinches split in the first live test (2026-10-14):** one held pinch fired Alt+Tab 2-4 times and
+  the switcher let go after 0.1-0.2 s. Causes: a start rule "two fingers straight" (the hand model reads the
+  pinching finger and relaxed ring/little as bent, ~1.3-1.4), a 0.10 s release, and a per-frame label vote.
+  Fixed with: only "not a fist" to start / nothing to continue, 0.18 s release, median distances. The index,
+  middle and ring tips sit within ~0.3 palm lengths of each other, so tip vs pair decisions are close calls:
+  check the `second hand touch` log lines before changing `BOTH_RATIO`.
 - **Toggles need a real release.** Two fists used to switch on and off forever, because one dropped frame looked
   like "released". Re-arming now needs an open hand, or no hands, for 0.4 s.
 - **Image enhancement made detection worse.** CLAHE, gamma and grayscale were tried and measured: they
