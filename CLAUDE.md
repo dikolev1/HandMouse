@@ -243,7 +243,7 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
 - **Debug pictures** (`GestureRecorder`, a logging handler): gesture log lines (`DEBUG_EVENTS`) are queued; the
   main loop keeps the last `DEBUG_SPAN` s of 480-wide frames + landmarks (`add`) and after each frame saves one
   strip for the queued lines (`save_pending`, at most one per 0.25 s, written by a background thread, folder pruned
-  to `DEBUG_KEEP_MB`). Don't name a handler method `flush`: logging calls it with no arguments at exit.
+  to the newest `DEBUG_KEEP` 500 after every save, oldest by file name). Don't name a handler method `flush`: logging calls it with no arguments at exit.
 - **Events in the log:** clicks, buttons, scroll on/off, volume on/off, gestures off/on, main hand
   switch, colour-view switches, the hand finder loading, camera settings at open.
 

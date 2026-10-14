@@ -63,19 +63,28 @@ check("cancelled touch and Esc are both caught", any("cancelled" in f for f in f
 shutil.rmtree(folder)
 
 # keep the folder small: oldest pictures go first
-keep = hm.DEBUG_KEEP_MB
+keep = hm.DEBUG_KEEP
 folder = _tempfile.mkdtemp(prefix="hm_debug_")
 for i in range(6):
     with open(os.path.join(folder, f"2026010{i}_000000_000 old.jpg"), "wb") as f:
-        f.write(b"x" * 300_000)
-    os.utime(os.path.join(folder, f"2026010{i}_000000_000 old.jpg"), (1_000_000 + i, 1_000_000 + i))
-hm.DEBUG_KEEP_MB = 1.0
+        f.write(b"x")
+open(os.path.join(folder, "notes.txt"), "w").close()
+hm.DEBUG_KEEP = 3
 hm.GestureRecorder(folder, True).prune()
 left = sorted(os.listdir(folder))
-check("folder over DEBUG_KEEP_MB -> oldest deleted, newest kept", len(left) == 3 and left[-1].startswith("20260105"),
+check("more than DEBUG_KEEP pictures -> the oldest deleted, the newest 3 kept (other files untouched)",
+      left == ["20260103_000000_000 old.jpg", "20260104_000000_000 old.jpg", "20260105_000000_000 old.jpg", "notes.txt"],
       left)
-hm.DEBUG_KEEP_MB = keep
-shutil.rmtree(folder)
+folder2, files, rec = run(click)          # a new picture with the limit reached -> one old one goes
+for f in files:
+    shutil.copy(os.path.join(folder2, f), folder)
+rec.folder = folder
+rec.prune()
+left = sorted(f for f in os.listdir(folder) if f.endswith(".jpg"))
+check("...a new picture on a full folder deletes the oldest one", len(left) == 3 and left[-1] == files[-1]
+      and "20260103_000000_000 old.jpg" not in left, left)
+hm.DEBUG_KEEP = keep
+shutil.rmtree(folder); shutil.rmtree(folder2)
 
 check("file name from a second-hand touch line",
       hm.GestureRecorder.short(["second hand touch 0.05 s, 2 frames: thumb to index 0.45 -> index (cancelled: x)"])

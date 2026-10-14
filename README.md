@@ -26,7 +26,7 @@ Control the Windows mouse with your hands through the laptop webcam. Everything 
     saves a picture to the `debug` folder next to `hand_mouse.py`: 8 camera frames from the last 1.2 seconds with
     the hands drawn in, the log line as the title and each hand's numbers. The file name starts with the date and
     time, so it matches the line in `hand_mouse.log`. When a gesture misfires, the picture shows what the app saw.
-    The oldest pictures are deleted when the folder passes 300 MB (`DEBUG_KEEP_MB`). Turn it off when done.
+    At most 500 pictures are kept: each new one deletes the oldest (`DEBUG_KEEP`). Turn it off when done.
   - **Close Hand Mouse**.
 - Double-clicking the desktop icon while the app is running opens the camera & log window.
 

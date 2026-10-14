@@ -315,7 +315,7 @@ LOG_MAX_MB = 2              # the log file is rotated at this size (keeps 2 old 
 DEBUG_PICTURES = False      # off by default
 DEBUG_FRAMES = 8            # pictures per strip (the last one is the moment the gesture was recognised)
 DEBUG_SPAN = 1.2            # seconds of camera frames before the gesture
-DEBUG_KEEP_MB = 300         # the oldest debug pictures are deleted when the folder gets bigger than this
+DEBUG_KEEP = 500            # at most this many debug pictures: each new one deletes the oldest beyond it
 
 # ========================================================================
 
@@ -3258,25 +3258,18 @@ class GestureRecorder(logging.Handler):
                     with open(path, "wb") as f:
                         f.write(data.tobytes())
                     self.saved += 1
-                    if self.saved % 20 == 1:
-                        self.prune()
+                    self.prune()
             except Exception as e:
                 log.warning("could not save a debug picture: %s", e)
             finally:
                 self.jobs.task_done()
 
     def prune(self):
-        """Delete the oldest pictures while the folder is bigger than DEBUG_KEEP_MB."""
+        """Keep the newest DEBUG_KEEP pictures, delete the older ones (the names start with date and time)."""
         try:
-            files = sorted((e for e in os.scandir(self.folder) if e.name.endswith(".jpg")),
-                           key=lambda e: e.stat().st_mtime)
-            total = sum(e.stat().st_size for e in files)
-            limit = DEBUG_KEEP_MB * 1024 * 1024
-            for e in files[:-1]:
-                if total <= limit:
-                    break
-                total -= e.stat().st_size
-                os.remove(e.path)
+            files = sorted(e.name for e in os.scandir(self.folder) if e.name.endswith(".jpg"))
+            for name in files[:max(len(files) - DEBUG_KEEP, 0)]:
+                os.remove(os.path.join(self.folder, name))
         except OSError:
             pass
 
