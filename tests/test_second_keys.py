@@ -219,6 +219,24 @@ m, e = run_w(START + far_right + REST, 4)
 check("ALT_TAB_STOP_AT_ENDS = False -> wraps like Windows", len(arrows(m)) >= 6, arrows(m))
 hm.ALT_TAB_STOP_AT_ENDS = True
 
+# ---- Alt+Tab held while the hand moves: the depth guess reads the thumb 0.5-0.65 away (debug pictures
+# 2026-10-14) although the "OK" sign is held. The picture (2D) keeps it held.
+def ok_depth_off(px=0.3, dz=0.055):
+    """Thumb on the index fingertip in the picture, but read 5.5 cm away in depth."""
+    h = left("index", px); w = h.world; t = w[8]
+    return with_thumb(h, (t[0] - 0.003, t[1] + 0.003, t[2] - dz))
+h = ok_depth_off()
+print("   depth misread: 3D", round(h.side["x1"], 2), "2D", round(hm.thumb_index_2d(h), 2))
+moving = N(10, both("index")) + [lambda t, k=k: [ok_depth_off(0.3 + 0.012 * k), right()] for k in range(1, 21)]
+m, e = run_w(START + moving + N(10, lambda t: [ok_depth_off(0.54), right()]), 8)
+ks = keys(m)
+check("switcher open, hand moving with depth misread for 1.9 s -> still open, Alt still down",
+      ks.count(("key", ALT, True)) == 1 and ("key", ALT, False) not in ks and arrows(m) == ["R"] * 4, (arrows(m), ks[-2:]))
+m, e = run_w(START + moving + REST, 8)
+check("...then the hand really opens -> let go once", keys(m).count(("key", ALT, False)) == 1, keys(m)[-2:])
+m, e = run(START + N(12, lambda t: [ok_depth_off(), right()]) + REST)
+check("depth misread alone (no pinch seen before) -> no Alt+Tab", keys(m) == [], keys(m))
+
 # ---- settings
 hm.SECOND_HAND_KEYS = False
 m, e = run(START + N(5, both("middle")) + REST)

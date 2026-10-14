@@ -182,6 +182,12 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
   Fixed with: only "not a fist" to start / nothing to continue, 0.18 s release, median distances. The index,
   middle and ring tips sit within ~0.3 palm lengths of each other, so tip vs pair decisions are close calls:
   check the `second hand touch` log lines before changing `BOTH_RATIO`.
+- **3D depth also breaks the held "OK" sign when the hand moves** (Alt+Tab switcher, 2026-10-14 debug
+  pictures): thumb clearly on the index tip, but `t-idx` read 0.53-0.65 (> `TOUCH_OFF`), so the switcher let go
+  after 0.5-0.8 s. A held "index" touch now also stays held while the thumb is within `INDEX_HOLD_2D` 0.30 of
+  the index tip in the picture (`thumb_index_2d`; shown as "(2d ...)" in the live numbers). 2D only keeps a
+  touch, never starts one. Debug pictures print each frame's thumb distances ("idx 3D/2D mid ring") under it,
+  because re-reading hands from the saved frames doesn't work (drawn skeleton, 480 px).
 - **Toggles need a real release.** Two fists used to switch on and off forever, because one dropped frame looked
   like "released". Re-arming now needs an open hand, or no hands, for 0.4 s.
 - **Image enhancement made detection worse.** CLAHE, gamma and grayscale were tried and measured: they

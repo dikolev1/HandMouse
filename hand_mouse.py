@@ -243,6 +243,10 @@ ALT_TAB_RELEASE = 0.30      # ...while the window switcher is open (moving the h
 ALT_TAB_HOLD = 0.5          # thumb held on the index fingertip this long (s) keeps the window switcher open
 ALT_TAB_STEP = 0.05         # move the hand this far (fraction of the picture width) for each next window
 ALT_TAB_STOP_AT_ENDS = True # the selection stops at the first / last window instead of wrapping around
+INDEX_HOLD_2D = 0.30        # a held index pinch also stays held while the thumb tip is this close to the index
+                            # tip in the picture (x palm length in the picture). The hand model's depth guess
+                            # reads 0.5-0.65 in 3D (= apart) while the "OK" sign is clearly held and the hand
+                            # moves to pick a window (debug pictures 2026-10-14)
 KEY_FIST_MAX = 1.5          # a fist held longer than this (s) does nothing when it opens (a resting hand)
 KEY_THUMB_HOLD = 0.35       # thumbs-up held this long (s) presses play / pause (once per thumbs-up)
 
@@ -1212,6 +1216,12 @@ def classify_tips(d: dict) -> str:
     return n1
 
 
+def thumb_index_2d(h: Hand) -> float:
+    """Thumb tip to index fingertip in the picture (x palm length in the picture)."""
+    f = h.flat
+    return math.dist(f[THUMB_TIP], f[INDEX_TIP]) / max(math.dist(f[WRIST], f[MIDDLE_MCP]), 1e-4)
+
+
 def second_contact(h: Hand, held: str | None = None) -> str | None:
     """What the thumb of the second hand touches now: "index", "middle", "ring", "index+middle", "middle+ring",
     "little base", or None. held = the touch going on already: looser limits, and bent fingers don't end it
@@ -1222,6 +1232,8 @@ def second_contact(h: Hand, held: str | None = None) -> str | None:
         return "little base"
     d = tip_distances(h)
     if min(d.values()) >= (TOUCH_OFF if held else TOUCH_ON):
+        if held == "index" and thumb_index_2d(h) < INDEX_HOLD_2D:
+            return "index"              # depth misread while the "OK" sign is held: the picture decides
         return None
     return classify_tips(d)
 
@@ -1963,7 +1975,8 @@ class Engine:
             extra += " found-again" if h.rescued else ""
             self.status.append(f"{h.role.upper():6s} fingers {' '.join(f'{v:.1f}' for v in h.ext)}  "
                                f"t-mid {h.pinch[0]:.2f}  t-ring {h.pinch[1]:.2f}  "
-                               f"t-idx {_num(h.side['x1'])}  t-ring-base {_num(h.side['x2'])}  "
+                               f"t-idx {_num(h.side['x1'])} (2d {thumb_index_2d(h):.2f})  "
+                               f"t-ring-base {_num(h.side['x2'])}  "
                                f"size {self._k(h):.2f}{extra}  {state}")
         if main is None:
             other = [h for h in hands if h.hand_side and h.hand_side != self.main_side]
@@ -3106,7 +3119,7 @@ def draw_preview(cv2, frame, hands, engine, fps, paused, extra="", text_on_image
 # log lines that are a recognised gesture (any line containing one of these), and lines that are not
 DEBUG_EVENTS = ("click", "button", "scroll mode", "volume control", "second hand", "both fists", "gestures off",
                 "gestures on", "main hand", "swipe")
-DEBUG_IGNORE = ("second hand finder", "snapshot saved", "debug pictures")
+DEBUG_IGNORE = ("second hand finder", "snapshot saved", "debug pictures", "diag ")
 DEBUG_TILE_W = 480              # width of one picture in the strip
 
 
@@ -3144,7 +3157,8 @@ class GestureRecorder(logging.Handler):
             return
         h, w = frame.shape[:2]
         small = cv2.resize(frame, (DEBUG_TILE_W, int(h * DEBUG_TILE_W / w)), interpolation=cv2.INTER_AREA)
-        self.frames.append((now, small, [(hd.role, list(hd.img), hd.zoomed) for hd in hands], list(status)))
+        self.frames.append((now, small, [(hd.role, list(hd.img), hd.zoomed, self.numbers(hd)) for hd in hands],
+                            list(status)))
         while self.frames and now - self.frames[0][0] > DEBUG_SPAN:
             self.frames.popleft()
 
@@ -3166,6 +3180,15 @@ class GestureRecorder(logging.Handler):
         return path
 
     @staticmethod
+    def numbers(h: Hand) -> str:
+        """The thumb distances of one frame, written under it (3D / picture for the index)."""
+        try:
+            return (f"idx {h.side['x1']:.2f}/{thumb_index_2d(h):.2f} mid {h.pinch[0]:.2f} ring {h.pinch[1]:.2f}"
+                    + (" unsure" if h.unsure else ""))
+        except Exception:
+            return ""
+
+    @staticmethod
     def short(msgs: list) -> str:
         """A few words for the file name: the last line, or what a second-hand touch was read as."""
         m = msgs[-1]
@@ -3185,7 +3208,7 @@ class GestureRecorder(logging.Handler):
         for i, (t, img, hands, _) in enumerate(picks):
             img = img.copy()
             th, tw = img.shape[:2]
-            for role, pts, zoomed in hands:
+            for k, (role, pts, zoomed, nums) in enumerate(hands):
                 pts = [(int(x * tw), int(y * th)) for x, y in pts]
                 color = ROLE_COLORS.get(role, (150, 150, 150))
                 for a, b in HAND_CONNECTIONS:
@@ -3195,6 +3218,9 @@ class GestureRecorder(logging.Handler):
                 cv2.putText(img, role + (" zoom" if zoomed else ""),
                             (pts[WRIST][0] - 20, min(pts[WRIST][1] + 16, th - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
                             color, 1)
+                y = th - 8 - 18 * k
+                cv2.putText(img, f"{role}: {nums}", (6, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 3)
+                cv2.putText(img, f"{role}: {nums}", (6, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1)
             label = "now" if i == n - 1 else f"-{t_end - t:.2f} s"
             cv2.putText(img, label, (6, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3)
             cv2.putText(img, label, (6, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
