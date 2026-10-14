@@ -28,7 +28,7 @@ Keyboard shortcuts with the other hand (your LEFT hand); pinches act when the th
   Ctrl+Z          thumb across the palm on the base of the little finger; twice quickly = Ctrl+Y
   Print Screen    thumb on middle AND ring fingertips
   voice typing    thumb on index AND middle fingertips (Win+H); twice quickly = on-screen keyboard on / off
-  Esc             make a fist and open it again (while the right hand is in view)
+  Esc             make a fist and open it again
   play / pause    thumbs-up
 
 Tray icon (next to the clock): left-click stops / resumes tracking; right-click for the menu
@@ -215,8 +215,8 @@ SECOND_HAND_GESTURES = False
 #   "middle"        thumb on middle fingertip           "ring"          thumb on ring fingertip
 #   "index+middle"  thumb on both fingertips             "middle+ring"   thumb on both fingertips
 #   "little base"   palm to the camera, thumb across the palm on the base of the little finger (like button 5)
-#   "fist"          fist with the thumb tucked in, then open the hand (only while the main hand is in view, so
-#                   it doesn't get in the way of switching the main hand; never as part of two fists)
+#   "fist"          fist with the thumb tucked in, then open the hand (never as part of two fists). With this hand
+#                   alone in view a quick fist waits GRAB_GAP: a second one switches the main hand instead
 #   "thumbs-up"     thumbs-up held KEY_THUMB_HOLD
 #   "... twice"     the same gesture twice quickly. The single one then waits KEY_DOUBLE_WINDOW to be sure.
 # Keys: ctrl, alt, shift, win, a-z, 0-9, f1-f24, enter, esc, tab, space, backspace, delete, insert, home, end,
@@ -1232,7 +1232,7 @@ class SecondHandKeys:
             if keys is not None:
                 self.actions[name] = (keys, key_label(text))
         self.last_text, self.last_time, self.fresh = "", -1e9, False
-        self.pending = None             # (gesture, time): a single tap waiting to see whether a second comes
+        self.pending = None             # (gesture, time, wait): a single tap waiting to see whether a second comes
         self.switcher = False           # Alt is held down: the window switcher is open
         self._clear()
 
@@ -1267,7 +1267,7 @@ class SecondHandKeys:
 
     def update(self, h: Hand | None, now: float, k: float = 1.0, main_in_view: bool = True,
                two_fists: bool = False):
-        if self.pending and not self.touching and now - self.pending[1] > KEY_DOUBLE_WINDOW:
+        if self.pending and not self.touching and now - self.pending[1] > self.pending[2]:
             name, self.pending = self.pending[0], None
             self._do(name)
         if h is None:
@@ -1340,7 +1340,7 @@ class SecondHandKeys:
         if waiting:
             self._do(waiting[0])
         if name + " twice" in self.actions:
-            self.pending = (name, now)
+            self.pending = (name, now, KEY_DOUBLE_WINDOW)
         else:
             self._do(name)
 
@@ -1390,13 +1390,22 @@ class SecondHandKeys:
         if self.fist_since is None:
             if tucked:
                 self.fist_since, self.fist_frames, self.fist_ok = now, 1, True
+                if self.pending and self.pending[0] == "fist":
+                    self.pending, self.fist_ok = None, False    # a second quick fist: switching the main hand
             return
         self.fist_frames += tucked
-        if two_fists or not main_in_view or (self.thumb_since is not None and self.thumb_fired):
-            self.fist_ok = False        # two fists, switching the main hand, or a thumbs-up: not this
-        if sorted(h.ext)[1] > GRAB_OPEN:                # hand open again
-            if self.fist_ok and self.fist_frames >= 2 and now - self.fist_since <= KEY_FIST_MAX:
-                self._do("fist")
+        if two_fists or (self.thumb_since is not None and self.thumb_fired):
+            self.fist_ok = False        # two fists (gestures off / on) or a thumbs-up: not this
+        if sorted(h.ext)[2] > SIDE_STRAIGHT:            # hand open again (two fingers straight is enough)
+            held = now - self.fist_since
+            if self.fist_ok and self.fist_frames >= 2 and held <= KEY_FIST_MAX:
+                if main_in_view or held > GRAB_MAX + 0.15:
+                    self._do("fist")
+                else:
+                    # alone in view, a quick fist: a second one would make this the main hand, so wait for it
+                    if self.pending:
+                        self._do(self.pending[0])
+                    self.pending = ("fist", now, GRAB_GAP + 0.15)
             self.fist_since = None
 
     # ---- output
@@ -1428,7 +1437,7 @@ class SecondHandKeys:
             return "ALT+TAB - move the hand to pick, let go to switch"
         if now - self.last_time < 0.8:
             return self.last_text.upper()
-        if self.pending:
+        if self.pending and self.pending[0] + " twice" in self.actions:
             return f"{self.pending[0]}... (again for {self.actions[self.pending[0] + ' twice'][1]})"
         return ""
 
@@ -2316,7 +2325,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Undo / redo (Ctrl+Z / Ctrl+Y)</h2><p>Palm to the camera, thumb across the palm on the <b>base of the little finger</b> (like button 5). Once = undo, <b>twice quickly</b> = redo.</p></div>
  <div class="card"><h2>Print Screen</h2><p>Thumb on the <b>middle and ring</b> fingertips together.</p></div>
  <div class="card"><h2>Voice typing / keyboard</h2><p>Thumb on the <b>index and middle</b> fingertips together: voice typing on / off (Win+H). <b>Twice quickly</b>: the on-screen keyboard opens / closes; type on it with the right hand.</p></div>
- <div class="card"><h2>Esc</h2><p>Make a <b>fist</b> (thumb tucked in) and open it again, while your right hand is in view.</p></div>
+ <div class="card"><h2>Esc</h2><p>Make a <b>fist</b> (thumb tucked in) and open it again. With only the left hand in view it comes a moment later (two quick fists would make the left hand the main hand instead).</p></div>
  <div class="card"><h2>Play / pause</h2><p><b>Thumbs-up</b>, held a moment.</p></div>
 </div>
 <h3>Main hand</h3>

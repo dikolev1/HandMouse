@@ -179,6 +179,21 @@ check("Ctrl+C pinch with a dropout -> one Ctrl+C", keys(m) == [("keys", (CTRL, o
 m, e = run(START + N(2, both("index")) + N(8, both("fist")) + REST)
 check("thumb brushes the index while closing a fist -> Esc only, no Alt+Tab", keys(m) == [("keys", (K["esc"],))], keys(m))
 
+# ---- Esc as tested live (2026-10-14): left hand alone in view, relaxed open hand afterwards
+ESC = [("keys", (K["esc"],))]
+m, e = run(N(14, only_left()) + N(3, only_left("fist")) + N(20, only_left()))
+check("left hand alone: quick fist, open -> Esc (after a short wait)", keys(m) == ESC and e.main_side == "right",
+      (keys(m), e.main_side))
+m, e = run(N(14, only_left()) + N(12, only_left("fist")) + N(2, only_left()))
+check("left hand alone: slower fist (0.75 s) -> Esc at once when it opens", keys(m) == ESC, keys(m))
+relaxed_open = lambda t: [bent(None, (1.7, 1.4, 1.3, 1.8))]
+m, e = run(N(14, relaxed_open) + N(4, only_left("fist")) + N(20, relaxed_open))
+check("left alone, opened relaxed (fingers read 1.7 1.4 1.3 1.8) -> Esc", keys(m) == ESC, keys(m))
+m, e = run(START + N(4, both("fist")) + N(10, lambda t: [bent(None, (1.7, 1.4, 1.3, 1.8)), right()]))
+check("both hands in view, opened relaxed -> Esc", keys(m) == ESC, keys(m))
+m, e = run(N(14, only_left()) + N(3, only_left("fist")) + N(2, only_left()) + N(30, lambda t: []))
+check("left alone: quick fist, then the hand leaves -> Esc still", keys(m) == ESC, keys(m))
+
 # ---- settings
 hm.SECOND_HAND_KEYS = False
 m, e = run(START + N(5, both("middle")) + REST)
