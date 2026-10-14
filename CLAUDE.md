@@ -52,8 +52,9 @@ care that it works reliably; when unsure, measure before claiming something help
 
 ## Gestures (current behaviour)
 
-The **main hand** is the user's **right hand**. All gestures are made with the main hand. The other hand only
-takes part in the two-fist on/off (`SECOND_HAND_GESTURES = False`). To make the **left** hand the main hand:
+The **main hand** is the user's **right hand**. All mouse gestures are made with the main hand. The other hand
+gives keyboard shortcuts (`SECOND_HAND_KEYS`, table below) and takes part in the two-fist on/off
+(`SECOND_HAND_GESTURES = False`; True gives it the main-hand gestures instead of the keys). To make the **left** hand the main hand:
 show only the left hand and make a fist twice quickly. This is remembered in state (`main_side`) until the right
 hand does the same.
 
@@ -71,6 +72,22 @@ hand does the same.
 | Gestures off / on | Both hands as fists for `STOP_HOLD` 1 s; switches once per hold; open a hand (or hide hands) `STOP_REARM` 0.4 s to switch again | `Engine` two-fist block, `_rearm` |
 | Switch main hand | Only the non-main hand in view, fist twice quickly | `_switch_main`, `DoubleGrab` |
 | Window swipe | Disabled (it was second-hand-only); code is still there behind `SECOND_HAND_GESTURES` | `Swiper` |
+
+**Second-hand keyboard shortcuts** (`SecondHandKeys`, map in `SECOND_KEYS`, tests in `test_second_keys.py`).
+`second_contact()` reads which tip(s) the thumb touches with the click logic (3D, `TOUCH_ON`/`TOUCH_OFF`,
+pairs by `BOTH_RATIO`) and the button-5 spot (`thumb_on_palm_base`, 2D). A pinch acts on **release**, as the
+contact seen in most frames (a pair wins a tie), and needs 2 frames. A gesture with a `"... twice"` entry waits
+`KEY_DOUBLE_WINDOW` 0.45 s before its single action.
+
+| Gesture (second hand) | Default | Notes |
+|---|---|---|
+| Thumb on index tip | Alt+Tab | Held `ALT_TAB_HOLD` 0.5 s: Alt stays down, hand moves `ALT_TAB_STEP` -> Left/Right arrow, release -> Alt up. Alt is also let go on hand lost, gestures off, `release_all` |
+| Thumb on middle / ring tip | Ctrl+C / Ctrl+V | |
+| Thumb on little-finger base | Ctrl+Z; twice Ctrl+Y | Same spot test as button 5 |
+| Thumb on middle + ring | Print Screen | |
+| Thumb on index + middle | Win+H (voice typing); twice: on-screen keyboard | `WinMouse.toggle_keyboard`: `osk.exe` via `os.startfile` (no admin needed), closed with `WM_SYSCOMMAND/SC_CLOSE` to `OSKMainClass` (both checked on the laptop) |
+| Fist, then open | Esc | Only with the main hand in view (left alone = main-hand switch), never during two fists, not after `KEY_FIST_MAX` 1.5 s |
+| Thumbs-up held `KEY_THUMB_HOLD` | Play/pause | Once per thumbs-up |
 
 There are also hotkeys (Ctrl+Alt+H stop/resume, Ctrl+Alt+C re-learn hand size, Ctrl+Alt+Q quit) and a tray
 menu: Camera & log window, Gestures on, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size,
@@ -120,8 +137,9 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
    6. Main-hand switch.
    7. If gestures are off: return.
    8. Scroll, side buttons, then swipe (off).
-   9. If there is no main hand: hold everything and return.
-   10. Clicks, then cursor (fingertip spike filter, `CursorBox` update with compensation, `CursorFilter`).
+   9. Second-hand keys (`SecondHandKeys.update`; the non-main hand, also when it is alone in view).
+   10. If there is no main hand: hold everything and return.
+   11. Clicks, then cursor (fingertip spike filter, `CursorBox` update with compensation, `CursorFilter`).
 5. **Cursor:**
    - **Mapping:** the fingertip position inside the cursor box maps to the virtual screen (all monitors).
    - **`CursorFilter`:**
@@ -134,8 +152,8 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
      - Behaves like a dead-zone game camera: it follows the finger after it has been outside for 0.5 s.
      - Its size slowly fits the 5th–95th percentile of the finger's movement range (0.75–1.3x).
      - `CursorFilter.shift()` compensates every box change, so the cursor never jumps.
-6. **`WinMouse`** uses `SetCursorPos`, `mouse_event` (including XBUTTON 1/2) and `keybd_event` (volume
-   keys). The process is per-monitor-v2 DPI aware.
+6. **`WinMouse`** uses `SetCursorPos`, `mouse_event` (including XBUTTON 1/2) and `keybd_event` (shortcuts, media
+   and volume keys). The process is per-monitor-v2 DPI aware.
 7. **UI:**
    - `TrayIcon` (pystray).
    - **`ViewWindow` runs the OpenCV window in its own thread.** Windows blocks a window's thread while its title
@@ -221,8 +239,9 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
 - **Dim-light blur.** Possibly try a shorter camera exposure (`CAP_PROP_EXPOSURE`). At open, MSMF reports
   auto exposure 0.0, exposure -5. This was never tested, so verify on the laptop and revert if the picture gets
   too dark.
-- **No window-switch gesture.** Window switching was removed together with second-hand gestures. It could be
-  given to the main hand if the user wants it back.
+- **Second-hand keys are new (2026-10-14) and not yet tested live.** Watch for: Esc from a left fist when the user
+  only meant to rest the hand, Ctrl+C/V misfires if the hand roles flip, the Alt+Tab step size (`ALT_TAB_STEP`).
+  The help page lists the default keys; it doesn't follow edits to `SECOND_KEYS`.
 - **Spurious "main hand changed" log lines** used to be common. The newer role logic logs only real side
   switches; keep it quiet.
 - **Hand finder licence.** It is free for non-commercial use (HaGRID, Ultralytics export), which is fine for this

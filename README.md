@@ -26,12 +26,12 @@ Control the Windows mouse with your hands through the laptop webcam. Everything 
 
 ## Gestures
 
-Your **main hand** is your **right hand**: it moves the cursor and makes all gestures. The left hand only takes
-part in the two-fist on / off. To use your **left hand** as the main hand: show only the left hand and make a
+Your **main hand** is your **right hand**: it moves the cursor and makes the mouse gestures. The left hand gives
+keyboard shortcuts (next section) and takes part in the two-fist on / off. To use your **left hand** as the main hand: show only the left hand and make a
 fist twice quickly. This is remembered (also after a restart) until the right hand does the same. The app tells
 the hands apart by position when both are in view, otherwise by the hand model's left / right guess averaged over
-time (`SWAP_HANDEDNESS = True` if it mixes them up). `SECOND_HAND_GESTURES = True` lets the other hand scroll,
-swipe windows, press buttons 4/5 and change the volume.
+time (`SWAP_HANDEDNESS = True` if it mixes them up). `SECOND_HAND_GESTURES = True` makes the other hand
+scroll, swipe windows, press buttons 4/5 and change the volume instead of giving keyboard shortcuts.
 
 | Action | Gesture |
 |---|---|
@@ -45,6 +45,25 @@ swipe windows, press buttons 4/5 and change the volume.
 | Volume | Thumbs-up (fingers folded, thumb out), held a moment. Thumb straight up = 100%; turn the hand until the thumb points down to lower it to 0%. Tuck the thumb in to stop. A fist with the thumb tucked in still scrolls |
 | Scroll | Make a fist. Move it down to scroll down, up to scroll up; the further from where you closed it, the faster. Open the hand to stop |
 | Gestures off / on | Hold **both** hands as fists for a second (beep first). While off, nothing reacts to your hands except two fists, which turn gestures back on. Holding the fists switches only once; open a hand (or take your hands out of view) before switching again. A full stop (camera off) is on the tray icon or Ctrl+Alt+H |
+
+## Left hand: keyboard shortcuts
+
+Made with the other hand (the left one). A pinch acts when the thumb **lets go**, so a touch that slides onto two
+fingertips counts as the two. Each one is logged (pink) in the camera & log window and shown big in the picture.
+
+| Shortcut | Gesture |
+|---|---|
+| Alt+Tab (switch window) | Thumb on the index fingertip, let go: back to the last window. **Hold** it half a second: the window switcher stays open; move the hand left / right to pick a window (one window per few cm), let go to switch to it |
+| Ctrl+C (copy) | Thumb on the middle fingertip |
+| Ctrl+V (paste) | Thumb on the ring fingertip |
+| Ctrl+Z (undo) / Ctrl+Y (redo) | Palm to the camera, thumb across the palm on the base of the little finger (like button 5). Once = undo, twice quickly = redo. A single one waits about half a second to see whether a second follows |
+| Print Screen | Thumb on the middle and ring fingertips together |
+| Voice typing / on-screen keyboard | Thumb on the index and middle fingertips together: Windows voice typing on / off (Win+H). Twice quickly: the on-screen keyboard opens or closes; type on it with the right hand |
+| Esc | Make a fist (thumb tucked in) and open it again, while the right hand is in view. Not when it is part of two fists, and not after holding the fist longer than 1.5 s |
+| Play / pause | Thumbs-up, held a moment |
+
+The shortcuts are set in `SECOND_KEYS` at the top of `hand_mouse.py` (e.g. `"middle": "ctrl+c"`), and
+`SECOND_HAND_KEYS = False` turns them all off.
 
 ## The cursor box moves with you
 

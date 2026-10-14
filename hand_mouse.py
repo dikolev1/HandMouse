@@ -4,9 +4,8 @@ Hand Mouse - control the Windows mouse with your hands through the webcam.
   python hand_mouse.py --preview   window with the camera picture and live numbers (for testing/tuning)
   pythonw hand_mouse.py            runs in the background with no window
 
-Gestures (all with the main hand = your RIGHT hand; to use the left hand instead, show only the left hand and
-make a fist twice quickly - remembered until the right hand does the same. The other hand only joins in for the
-two-fist gestures on / off):
+Gestures with the main hand = your RIGHT hand (to use the left hand instead, show only the left hand and
+make a fist twice quickly - remembered until the right hand does the same):
   cursor          follows the index fingertip of the main hand (across all monitors)
   left click      thumb touches middle fingertip
   right click     thumb touches ring fingertip
@@ -21,6 +20,16 @@ two-fist gestures on / off):
                   further = faster. Open the hand to stop.
   gestures off/on hold BOTH hands as fists for about a second: all gestures stop except two fists, which
                   turn them back on. A full stop (camera off) is in the tray icon / Ctrl+Alt+H.
+
+Keyboard shortcuts with the other hand (your LEFT hand); pinches act when the thumb lets go:
+  Alt+Tab         thumb on index fingertip. Hold it: the window switcher stays open, move the hand left /
+                  right to pick a window, let go to switch to it
+  Ctrl+C / Ctrl+V thumb on middle / ring fingertip
+  Ctrl+Z          thumb across the palm on the base of the little finger; twice quickly = Ctrl+Y
+  Print Screen    thumb on middle AND ring fingertips
+  voice typing    thumb on index AND middle fingertips (Win+H); twice quickly = on-screen keyboard on / off
+  Esc             make a fist and open it again (while the right hand is in view)
+  play / pause    thumbs-up
 
 Tray icon (next to the clock): left-click stops / resumes tracking; right-click for the menu
 (Camera & log window, Gestures on, Stop / Resume tracking, Gestures help, Start with Windows, Re-learn my hand size,
@@ -194,9 +203,43 @@ SIDE_MARGIN = 0.6           # button 5 spot must be clearly closer than any fing
 SIDE_STRAIGHT = 1.45        # the fingers not used must be straighter than this (stops fists and clicks)
 SIDE_FACING = 0.6           # button 5: how much the palm must face the camera (1 = straight at it, 0 = edge-on)
 
-# The second hand (the left one when both are in view) only takes part in the two-fist gestures on / off.
-# True = it can also scroll, swipe windows, press buttons 4/5 and change the volume.
+# The second hand (the left one when both are in view) gives keyboard shortcuts (SECOND_HAND_KEYS below) and
+# takes part in the two-fist gestures on / off.
+# True = instead it scrolls, swipes windows, presses buttons 4/5 and changes the volume like the main hand.
 SECOND_HAND_GESTURES = False
+
+# Keyboard shortcuts from the second hand (usually your LEFT hand). Pinches act when the thumb lets go, so a
+# touch that slides onto two fingertips counts as the pair.
+#   "index"         thumb on index fingertip. Alt+Tab: held ALT_TAB_HOLD the window switcher stays open; move
+#                   the hand left / right to pick a window, let go to switch to it
+#   "middle"        thumb on middle fingertip           "ring"          thumb on ring fingertip
+#   "index+middle"  thumb on both fingertips             "middle+ring"   thumb on both fingertips
+#   "little base"   palm to the camera, thumb across the palm on the base of the little finger (like button 5)
+#   "fist"          fist with the thumb tucked in, then open the hand (only while the main hand is in view, so
+#                   it doesn't get in the way of switching the main hand; never as part of two fists)
+#   "thumbs-up"     thumbs-up held KEY_THUMB_HOLD
+#   "... twice"     the same gesture twice quickly. The single one then waits KEY_DOUBLE_WINDOW to be sure.
+# Keys: ctrl, alt, shift, win, a-z, 0-9, f1-f24, enter, esc, tab, space, backspace, delete, insert, home, end,
+# pageup, pagedown, up, down, left, right, printscreen, playpause, nexttrack, prevtrack, mute, joined with +.
+# "keyboard" opens / closes the Windows on-screen keyboard. "" = nothing.
+SECOND_HAND_KEYS = True
+SECOND_KEYS = {
+    "index": "alt+tab",
+    "middle": "ctrl+c",
+    "ring": "ctrl+v",
+    "little base": "ctrl+z",
+    "little base twice": "ctrl+y",
+    "middle+ring": "printscreen",
+    "index+middle": "win+h",            # Windows voice typing on / off
+    "index+middle twice": "keyboard",
+    "fist": "esc",
+    "thumbs-up": "playpause",
+}
+KEY_DOUBLE_WINDOW = 0.45    # a second tap this soon (s) after letting go makes it "twice"
+ALT_TAB_HOLD = 0.5          # thumb held on the index fingertip this long (s) keeps the window switcher open
+ALT_TAB_STEP = 0.05         # move the hand this far (fraction of the picture width) for each next window
+KEY_FIST_MAX = 1.5          # a fist held longer than this (s) does nothing when it opens (a resting hand)
+KEY_THUMB_HOLD = 0.35       # thumbs-up held this long (s) presses play / pause (once per thumbs-up)
 
 # Window swipe: with both hands in view, move the SECOND hand (the left one) quickly left or right.
 # The main (right) hand never swipes.
@@ -418,6 +461,18 @@ def side_ratios(h: Hand) -> dict:
     a, b, lo, hi = X2_ZONE
     return {"x1": math.dist(h.world[THUMB_TIP], h.world[INDEX_TIP]) / palm_length(h),
             "x2": _zone_distance(f[THUMB_TIP], f[a], f[b], lo, hi) / p}
+
+
+def thumb_on_palm_base(h: Hand, held: bool = False) -> bool:
+    """Button 5 spot: palm to the camera, middle / ring / little finger straight, thumb across the palm on the
+    base of the ring / little finger (and clearly not on a fingertip). held = already touching: looser limits."""
+    if min(h.ext[i] for i in SIDE_STRAIGHT_FINGERS["x2"]) < SIDE_STRAIGHT * (0.93 if held else 1.0):
+        return False
+    if h.facing < SIDE_FACING * (0.85 if held else 1.0):
+        return False                    # hand turned sideways: the thumb only looks like it is on the palm
+    d = h.side["x2"]
+    loose = 1 / 0.75 if held else 1.0
+    return d < (SIDE_TOUCH_OFF if held else SIDE_TOUCH_ON) and d < SIDE_MARGIN * h.tip_min * loose
 
 
 def pinch_ratios(h: Hand) -> tuple[float, float]:
@@ -1066,11 +1121,8 @@ class SideButtonTracker:
             if name == "x1":            # thumb on the index fingertip, clearly not on the middle / ring tip
                 if d < (TOUCH_OFF if held else TOUCH_ON) and d < INDEX_PINCH_MARGIN * min(h.pinch) * loose:
                     return name
-            else:                       # thumb across the palm on the base of the ring / little finger
-                if h.facing < SIDE_FACING * (0.85 if held else 1.0):
-                    continue            # hand turned sideways: the thumb only looks like it is on the palm
-                if d < (SIDE_TOUCH_OFF if held else SIDE_TOUCH_ON) and d < SIDE_MARGIN * h.tip_min * loose:
-                    return name
+            elif thumb_on_palm_base(h, held):   # thumb across the palm on the base of the ring / little finger
+                return name
         return None
 
     def update(self, h: Hand, now: float, suppress: bool = False):
@@ -1094,6 +1146,239 @@ class SideButtonTracker:
         if self.pressed:
             self.mouse.button(self.pressed, False)
         self.pressed, self.touching, self.frames = None, None, 0
+
+
+_VK_NAMES = {"ctrl": 0x11, "control": 0x11, "alt": 0x12, "shift": 0x10, "win": 0x5B, "tab": 0x09, "enter": 0x0D,
+             "esc": 0x1B, "escape": 0x1B, "space": 0x20, "backspace": 0x08, "delete": 0x2E, "del": 0x2E,
+             "insert": 0x2D, "home": 0x24, "end": 0x23, "pageup": 0x21, "pagedown": 0x22, "left": 0x25,
+             "up": 0x26, "right": 0x27, "down": 0x28, "printscreen": 0x2C, "prtsc": 0x2C, "playpause": 0xB3,
+             "nexttrack": 0xB0, "prevtrack": 0xB1, "mute": 0xAD}
+
+
+def parse_keys(text: str):
+    """"ctrl+c" -> [VK_CONTROL, VK_C]; "keyboard" -> "keyboard"; "" -> None. ValueError for unknown key names."""
+    t = text.strip().lower().replace(" ", "")
+    if not t:
+        return None
+    if t == "keyboard":
+        return t
+    vks = []
+    for part in t.split("+"):
+        if part in _VK_NAMES:
+            vks.append(_VK_NAMES[part])
+        elif len(part) == 1 and part.isascii() and part.isalnum():
+            vks.append(ord(part.upper()))
+        elif part[:1] == "f" and part[1:].isdigit() and 1 <= int(part[1:]) <= 24:
+            vks.append(0x6F + int(part[1:]))
+        else:
+            raise ValueError(f"unknown key {part!r}")
+    return vks
+
+
+def key_label(text: str) -> str:
+    """"ctrl+c" -> "Ctrl+C", "keyboard" -> "on-screen keyboard"."""
+    if text.strip().lower() == "keyboard":
+        return "on-screen keyboard"
+    return "+".join(p.strip().capitalize() for p in text.split("+"))
+
+
+def second_contact(h: Hand, held: str | None = None) -> str | None:
+    """What the thumb of the second hand touches now: "index", "middle", "ring", "index+middle", "middle+ring",
+    "little base", or None. held = the touch going on already (looser limits, so it doesn't flicker)."""
+    if sorted(h.ext)[2] < SIDE_STRAIGHT:
+        return None                     # fewer than two fingers straight: a fist or a closing hand
+    if thumb_on_palm_base(h, held == "little base"):
+        return "little base"
+    d = {"index": h.side["x1"], "middle": h.pinch[0], "ring": h.pinch[1]}
+    (n1, d1), (n2, d2), _ = sorted(d.items(), key=lambda kv: kv[1])
+    if d1 >= (TOUCH_OFF if held else TOUCH_ON):
+        return None
+    pair = "+".join(n for n in d if n in (n1, n2))
+    if pair in ("index+middle", "middle+ring") and d2 < TOUCH_OFF and d2 / max(d1, 1e-3) < BOTH_RATIO:
+        return pair                     # fingertips side by side sit close: compare, like the middle click
+    return n1
+
+
+class SecondHandKeys:
+    """Keyboard shortcuts from the second hand (SECOND_KEYS). A pinch acts when the thumb lets go, as the
+    finger(s) it touched most; "twice" gestures wait for a possible second tap; the Alt+Tab pinch held keeps
+    the window switcher open; a fist presses its key when the hand opens; a thumbs-up when held."""
+
+    def __init__(self, mouse):
+        self.mouse = mouse
+        self.actions = {}
+        for name, text in SECOND_KEYS.items():
+            try:
+                keys = parse_keys(text)
+            except ValueError as e:
+                log.warning("SECOND_KEYS[%r] = %r: %s - ignored", name, text, e)
+                continue
+            if keys is not None:
+                self.actions[name] = (keys, key_label(text))
+        self.last_text, self.last_time, self.fresh = "", -1e9, False
+        self.pending = None             # (gesture, time): a single tap waiting to see whether a second comes
+        self.switcher = False           # Alt is held down: the window switcher is open
+        self._clear()
+
+    def _clear(self):
+        self.touching, self.counts, self.start, self.last_raw = False, {}, 0.0, -1e9
+        self.sw_x = None
+        self.fist_since, self.fist_frames, self.fist_ok = None, 0, False
+        self.thumb_since, self.thumb_last, self.thumb_fired = None, -1e9, False
+
+    def reset(self):
+        """Let go of everything (hand lost, gestures off, pause, quit). A waiting single tap still acts."""
+        if self.switcher:
+            self._close_switcher()
+        if self.pending:
+            name, self.pending = self.pending[0], None
+            self._do(name)
+        self._clear()
+
+    def dominant(self) -> str | None:
+        """The finger(s) touched most during this touch (a pair wins a tie)."""
+        if not self.counts:
+            return None
+        return max(self.counts, key=lambda n: (self.counts[n], "+" in n))
+
+    def update(self, h: Hand | None, now: float, k: float = 1.0, main_in_view: bool = True,
+               two_fists: bool = False):
+        if self.pending and not self.touching and now - self.pending[1] > KEY_DOUBLE_WINDOW:
+            name, self.pending = self.pending[0], None
+            self._do(name)
+        if h is None:
+            if self.touching and now - self.last_raw > LOST_GRACE:
+                self._end_touch(now, fire=False)        # hand gone mid-touch: let go, don't act
+            self.fist_since = self.thumb_since = None
+            return
+        if h.unsure:
+            return                      # finger shapes unreadable this frame: keep the state
+        self._pinch(h, now, k)
+        self._thumbs_up(h, now)
+        self._fist(h, now, main_in_view, two_fists)
+
+    # ---- pinches
+    def _pinch(self, h: Hand, now: float, k: float):
+        c = second_contact(h, self.dominant() if self.touching else None)
+        if c is not None:
+            self.last_raw = now
+            if not self.touching:
+                self.touching, self.counts, self.start = True, {}, now
+            self.counts[c] = self.counts.get(c, 0) + 1
+            if self.switcher:
+                self._switch_step(h, k)
+            elif (self.actions.get(self.dominant(), (None, ""))[1] == "Alt+Tab"
+                  and now - self.start >= ALT_TAB_HOLD and sum(self.counts.values()) >= 3):
+                self._open_switcher(h)
+        elif self.touching and now - self.last_raw >= RELEASE_DELAY:
+            self._end_touch(now)
+
+    def _end_touch(self, now: float, fire: bool = True):
+        name, frames = self.dominant(), sum(self.counts.values())
+        self.touching, self.counts = False, {}
+        if self.switcher:
+            self._close_switcher()
+            return
+        if not fire or frames < 2 or name not in self.actions:
+            return                      # brushed past for a frame, or nothing set for it
+        waiting, self.pending = self.pending, None
+        if waiting and waiting[0] == name:
+            self._do(name + " twice")
+            return
+        if waiting:
+            self._do(waiting[0])
+        if name + " twice" in self.actions:
+            self.pending = (name, now)
+        else:
+            self._do(name)
+
+    def _open_switcher(self, h: Hand):
+        self.switcher, self.sw_x = True, h.center[0]
+        if hasattr(self.mouse, "key"):
+            self.mouse.key(_VK_NAMES["alt"], True)
+            self.mouse.keys([_VK_NAMES["tab"]])
+        log.info("second hand: Alt+Tab held - move the hand left / right to pick a window, let go to switch")
+
+    def _switch_step(self, h: Hand, k: float):
+        step = ALT_TAB_STEP * k
+        dx = h.center[0] - self.sw_x
+        for _ in range(3):              # at most 3 windows per frame
+            if abs(dx) < step:
+                break
+            d = 1 if dx > 0 else -1
+            if hasattr(self.mouse, "keys"):
+                self.mouse.keys([_VK_NAMES["right" if d > 0 else "left"]])
+            self.sw_x += d * step
+            dx -= d * step
+
+    def _close_switcher(self):
+        if hasattr(self.mouse, "key"):
+            self.mouse.key(_VK_NAMES["alt"], False)
+        self.switcher, self.sw_x = False, None
+        self._show("Alt+Tab: switched")
+        log.info("second hand: Alt+Tab let go - switched window")
+
+    # ---- fist and thumbs-up
+    def _thumbs_up(self, h: Hand, now: float):
+        on = self.thumb_since is not None
+        pose = (max(h.ext) < (FIST_KEEP if on else FIST_CURL)
+                and thumb_out(h) > (VOLUME_THUMB_KEEP if on else VOLUME_THUMB_OUT))
+        if pose:
+            self.thumb_last = now
+            if not on:
+                self.thumb_since, self.thumb_fired = now, False
+            elif not self.thumb_fired and now - self.thumb_since >= KEY_THUMB_HOLD:
+                self.thumb_fired = True
+                self._do("thumbs-up")
+        elif on and now - self.thumb_last > 0.2:
+            self.thumb_since = None
+
+    def _fist(self, h: Hand, now: float, main_in_view: bool, two_fists: bool):
+        tucked = is_fist(h, keep=self.fist_since is not None)
+        if self.fist_since is None:
+            if tucked:
+                self.fist_since, self.fist_frames, self.fist_ok = now, 1, True
+            return
+        self.fist_frames += tucked
+        if two_fists or not main_in_view or (self.thumb_since is not None and self.thumb_fired):
+            self.fist_ok = False        # two fists, switching the main hand, or a thumbs-up: not this
+        if sorted(h.ext)[1] > GRAB_OPEN:                # hand open again
+            if self.fist_ok and self.fist_frames >= 2 and now - self.fist_since <= KEY_FIST_MAX:
+                self._do("fist")
+            self.fist_since = None
+
+    # ---- output
+    def _do(self, name: str):
+        act = self.actions.get(name)
+        if act is None:
+            return
+        keys, label = act
+        fn = getattr(self.mouse, "toggle_keyboard" if keys == "keyboard" else "keys", None)
+        if fn is not None:
+            try:
+                if keys == "keyboard":
+                    fn()
+                else:
+                    fn(keys)
+            except Exception as e:
+                log.warning("second hand %s -> %s failed: %s", name, label, e)
+        self._show(label)
+        log.info("second hand %s -> %s", name, label)
+
+    def _show(self, text: str):
+        self.last_text, self.fresh = text, True     # timed with the frame clock in display()
+
+    def display(self, now: float) -> str:
+        """What to show in the camera window (empty when nothing is going on)."""
+        if self.fresh:
+            self.fresh, self.last_time = False, now
+        if self.switcher:
+            return "ALT+TAB - move the hand to pick, let go to switch"
+        if now - self.last_time < 0.8:
+            return self.last_text.upper()
+        if self.pending:
+            return f"{self.pending[0]}... (again for {self.actions[self.pending[0] + ' twice'][1]})"
+        return ""
 
 
 class Track:
@@ -1125,6 +1410,7 @@ class Engine:
         self.volume_level = None        # volume being set now (moves towards the hand's target smoothly)
         self.volume_target = None
         self.swiper = Swiper()
+        self.keys = SecondHandKeys(mouse)
         self.tracks: dict[str, Track] = {}
         self.next_id = 0
         self.main_key = None            # key of the hand that moves the cursor
@@ -1226,6 +1512,7 @@ class Engine:
         if not keep_fists:
             self.fists.clear()
         self.swiper.reset()
+        self.keys.reset()
         self.scroll_acc = 0.0
 
     # ---- which hand is which
@@ -1337,6 +1624,8 @@ class Engine:
 
         if not hands:
             self._rearm(True, now)              # hands out of view also allows the next two-fist switch
+            if SECOND_HAND_KEYS and not self.gestures_off:
+                self.keys.update(None, now)     # a waiting single tap still acts; a held Alt is let go
             if now - self.last_seen > LOST_GRACE:
                 self.release_all(now)
                 self.cursor.reset(keep_position=True)
@@ -1476,6 +1765,19 @@ class Engine:
                 self.do_swipe(direction, now)
         else:
             self.swiper.update(None, now)
+
+        # --- keyboard shortcuts (second hand; also when it is the only hand in view)
+        if SECOND_HAND_KEYS and not SECOND_HAND_GESTURES:
+            kh = second
+            if main is None:
+                others = [h for h in hands if h.hand_side is not None and h.hand_side != self.main_side]
+                kh = others[0] if len(others) == 1 else None
+            self.keys.update(kh, now, self._k(kh) if kh is not None else 1.0, main_in_view=main is not None,
+                             two_fists=two_fists or self.both_fists_since is not None)
+            shown = self.keys.display(now)
+            if shown:
+                side = kh.hand_side if kh is not None and kh.hand_side else "second"
+                self.gesture = f"{side.upper()} HAND: {shown}"
 
         if main is None:                        # main hand briefly gone: hold everything
             self._status(hands, main, rate, frozen=True)
@@ -1698,6 +2000,31 @@ class WinMouse:
                     u.keybd_event(vk, 0, 0x2, 0)
             self._volume.show = show
         return self._volume
+
+    _EXTENDED = {0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2D, 0x2E}   # page/home/end/arrows/ins/del
+
+    def key(self, vk: int, down: bool):
+        flags = (0x1 if vk in self._EXTENDED else 0) | (0 if down else 0x2)
+        self.u.keybd_event(vk, self.u.MapVirtualKeyW(vk, 0) & 0xFF, flags, 0)
+
+    def keys(self, vks: list):
+        """A shortcut: keys down in order, then up in reverse order."""
+        for vk in vks:
+            self.key(vk, True)
+            time.sleep(0.01)
+        for vk in reversed(vks):
+            self.key(vk, False)
+            time.sleep(0.01)
+
+    def toggle_keyboard(self):
+        """Open the Windows on-screen keyboard, or close it when it is open."""
+        import ctypes
+        self.u.FindWindowW.restype = ctypes.c_void_p
+        hwnd = self.u.FindWindowW("OSKMainClass", None)
+        if hwnd:
+            self.u.PostMessageW(ctypes.c_void_p(hwnd), 0x0112, 0xF060, 0)     # WM_SYSCOMMAND, SC_CLOSE
+        else:
+            os.startfile(os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "System32", "osk.exe"))
 
     def swipe(self, action: str, direction: str):
         keys = SWIPE_KEYS.get((action, direction))
@@ -1928,8 +2255,20 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Scroll</h2><p>Make a <b>fist</b>. Move the fist down to scroll down, up to scroll up. The further from where you closed it, the faster. Open the hand to stop.</p></div>
  <div class="card"><h2>Gestures off / on</h2><p>Hold <b>both</b> hands as fists for a second (beep first). Gestures turn off (orange badge on the tray icon): the cursor and all gestures ignore your hands, except two fists, which turn them back on the same way. To stop the camera completely, click the tray icon.</p></div>
 </div>
+<h3>Left hand: keyboard shortcuts</h3>
+<p class="lead">With your other hand (the left one). A pinch acts when the thumb lets go. These are the default shortcuts; they can be changed in <code>SECOND_KEYS</code> at the top of hand_mouse.py.</p>
+<div class="grid">
+ <div class="card"><h2>Switch window (Alt+Tab)</h2><p>Thumb on the <b>index</b> fingertip and let go: back to the last window. <b>Hold</b> it: the window switcher stays open; move the hand left / right to pick a window, let go to switch to it.</p></div>
+ <div class="card"><h2>Copy (Ctrl+C)</h2><p>Thumb on the <b>middle</b> fingertip.</p></div>
+ <div class="card"><h2>Paste (Ctrl+V)</h2><p>Thumb on the <b>ring</b> fingertip.</p></div>
+ <div class="card"><h2>Undo / redo (Ctrl+Z / Ctrl+Y)</h2><p>Palm to the camera, thumb across the palm on the <b>base of the little finger</b> (like button 5). Once = undo, <b>twice quickly</b> = redo.</p></div>
+ <div class="card"><h2>Print Screen</h2><p>Thumb on the <b>middle and ring</b> fingertips together.</p></div>
+ <div class="card"><h2>Voice typing / keyboard</h2><p>Thumb on the <b>index and middle</b> fingertips together: voice typing on / off (Win+H). <b>Twice quickly</b>: the on-screen keyboard opens / closes; type on it with the right hand.</p></div>
+ <div class="card"><h2>Esc</h2><p>Make a <b>fist</b> (thumb tucked in) and open it again, while your right hand is in view.</p></div>
+ <div class="card"><h2>Play / pause</h2><p><b>Thumbs-up</b>, held a moment.</p></div>
+</div>
 <h3>Main hand</h3>
-<p>Your <b>right hand</b> does everything (the left one only joins in for the two-fist on / off). To use your <b>left hand</b> instead: show only the left hand and make a <b>fist twice</b> quickly. The app remembers it, also after a restart, until your right hand does the same.</p>
+<p>Your <b>right hand</b> moves the cursor and clicks; the left one gives keyboard shortcuts (below). To use your <b>left hand</b> instead: show only the left hand and make a <b>fist twice</b> quickly. The app remembers it, also after a restart, until your right hand does the same.</p>
 <h3>Tray icon (next to the clock)</h3>
 <ul><li><b>Left-click</b>: stop / resume tracking, camera off (red badge = stopped, orange badge = gestures off).</li>
 <li><b>Right-click</b>: Camera &amp; log window, Gestures on, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size, Close.</li></ul>
@@ -2652,6 +2991,8 @@ def _event_color(msg: str) -> tuple:
         return (120, 220, 255)          # clicks and buttons: orange-yellow
     if "scroll" in m or "swipe" in m:
         return (255, 200, 120)          # scroll / swipe: light blue
+    if m.startswith("second hand"):
+        return (230, 150, 230)          # keyboard shortcuts: pink
     if "stopp" in m or "paused" in m or "fists" in m:
         return (110, 110, 255)          # stop: red
     if "hand" in m:
