@@ -1047,9 +1047,11 @@ class ClickTracker:
                 self.sum_dm = self.sum_dr = 0.0
                 self.n = 0
                 self.edm = self.edr = None
+                self.recent = []
             self.sum_dm += dm
             self.sum_dr += dr
             self.n += 1
+            self.recent = (self.recent + [(dm, dr)])[-2:]
             self.edm = dm if self.edm is None else 0.5 * dm + 0.5 * self.edm
             self.edr = dr if self.edr is None else 0.5 * dr + 0.5 * self.edr
         elif self.touching and (now - self.last_raw_touch >= RELEASE_DELAY or (
@@ -1060,6 +1062,9 @@ class ClickTracker:
             self.touching = False
             if self.pressed:
                 self._release(now)
+            elif not self.fired and self.n >= 2 and not self.quick:
+                self._press(self._choose(), now)       # a quick tap that ended before CLICK_DELAY: click now
+                self._release(now)
             elif not self.fired and DIAGNOSTICS:
                 log.info("touch ended without a click: fingers touched only %.2f s (needs %.2f s)",
                          self.last_raw_touch - self.touch_start, CLICK_DELAY)
@@ -1068,8 +1073,10 @@ class ClickTracker:
         if cand != self.cand:
             self.cand, self.cand_since = cand, now
 
+        # a new touch clicks after 2 frames AND CLICK_DELAY: at 27+ fps two frames are only ~40 ms, and the ring
+        # finger of a middle click often arrives a frame after the middle finger
         if (self.touching and raw and not self.fired and self.n
-                and (self.quick or self.n >= 2 or now - self.touch_start >= CLICK_DELAY)):
+                and (self.quick or (self.n >= 2 and now - self.touch_start >= CLICK_DELAY))):
             if self.quick:
                 button = self.last_button       # a double-click repeats the same button
                 late = now - self.last_down > self.double_click_time * 0.85
@@ -1083,13 +1090,23 @@ class ClickTracker:
                     log.info("double-click: second pinch %.2f s after the first%s", now - self.last_down,
                              " (helped: extra click sent)" if late else "")
             else:
-                button = self.classify(self.sum_dm / self.n, self.sum_dr / self.n)
+                button = self._choose()
             self._press(button, now)
-        elif (self.pressed in ("left", "right") and cand == "middle" and not self.quick
+        elif (self.pressed in ("left", "right") and cand == "middle"
               and now - self.cand_since >= RELEASE_DELAY and now - self.pressed_at <= UPGRADE_WINDOW):
-            # the third finger arrived a moment late: it was meant as a middle click
+            # the third finger arrived a moment late: it was meant as a middle click (also when this pinch came
+            # right after a click and started as its double-click, which repeats the button)
             self._release(now)
+            self.quick = False
             self._press("middle", now)
+
+    def _choose(self) -> str:
+        """Which button this touch is: from the average of the whole touch, but middle if the latest two frames
+        have both fingers on (the ring finger often arrives a frame after the middle finger)."""
+        button = self.classify(self.sum_dm / self.n, self.sum_dr / self.n)
+        rm = sum(d[0] for d in self.recent) / len(self.recent)
+        rr = sum(d[1] for d in self.recent) / len(self.recent)
+        return "middle" if self.classify(rm, rr) == "middle" else button
 
     def _press(self, button: str, now: float):
         self.mouse.button(button, True)

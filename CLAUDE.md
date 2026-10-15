@@ -192,6 +192,13 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
   2D < `INDEX_START_2D` 0.30 with 3D < `INDEX_START_3D_MAX` 0.60. Middle / ring keep `TOUCH_ON` (they read
   0.16-0.27 held). Debug pictures print each frame's thumb distances ("idx 3D/2D mid ring") under it,
   because re-reading hands from the saved frames doesn't work (drawn skeleton, 480 px).
+- **Middle click read as left at high frame rates (2026-10-15).** The app went from ~14 to ~27 fps, so "2 frames
+  or `CLICK_DELAY`" decided a click after ~40 ms, before the ring finger arrived (debug picture: first frame
+  middle 0.19, ring 0.61). And every retry within `DOUBLE_CLICK_WINDOW` was a "quick" double-click press that
+  repeated "left" and was never upgraded. Now: a new touch clicks after 2 frames **and** `CLICK_DELAY`; the
+  button is middle if the latest 2 frames say middle (`ClickTracker._choose`); a 2+ frame tap that ends before
+  the delay still clicks on release; the late-ring upgrade also works on a double-click press
+  (`tests/test_middle_click.py`). Timing rules in frames change meaning when the frame rate changes.
 - **Toggles need a real release.** Two fists used to switch on and off forever, because one dropped frame looked
   like "released". Re-arming now needs an open hand, or no hands, for 0.4 s.
 - **Image enhancement made detection worse.** CLAHE, gamma and grayscale were tried and measured: they
