@@ -90,7 +90,7 @@ is clearly wide open (so "twice" taps don't merge); 2 fist frames in a row cance
 | Thumb on little-finger base | Ctrl+Z; twice Ctrl+Y | Same spot test as button 5 |
 | Thumb on middle + ring | Print Screen | |
 | Thumb on index + middle | Win+H (voice typing); twice: on-screen keyboard | `WinMouse.toggle_keyboard`: `osk.exe` via `os.startfile` (no admin needed), closed with `WM_SYSCOMMAND/SC_CLOSE` to `OSKMainClass` (both checked on the laptop) |
-| Fist, then open | Esc | "Open" = two fingers straight (relaxed hands read 1.3-1.4). Never during two fists, not after `KEY_FIST_MAX` 1.5 s. Alone in view (no main hand) a quick fist (< `GRAB_MAX`+0.15) waits `GRAB_GAP`+0.15 s, since a second quick fist is the main-hand switch; the user tests with the left hand alone, so Esc must work then (it didn't at first) |
+| Fist (held `KEY_FIST_HOLD` 0.2 s) | Esc | Acts while closed, once per fist; re-armed when two fingers are straight again. Only the only fist in view (`two_fists` blocks it, incl. a right-hand scroll fist). Alone in view (no main hand) waits `GRAB_MAX`+0.15 s, since two quick fists are the main-hand switch. Was "on opening" until 2026-10-15; the user asked for it on closing |
 | Thumbs-up held `KEY_THUMB_HOLD` | Play/pause | Once per thumbs-up |
 
 There are also hotkeys (Ctrl+Alt+H stop/resume, Ctrl+Alt+C re-learn hand size, Ctrl+Alt+Q quit) and a tray

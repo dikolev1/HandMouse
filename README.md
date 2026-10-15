@@ -65,7 +65,7 @@ fingertips counts as the two. Each one is logged (pink) in the camera & log wind
 | Ctrl+Z (undo) / Ctrl+Y (redo) | Palm to the camera, thumb across the palm on the base of the little finger (like button 5). Once = undo, twice quickly = redo. A single one waits about half a second to see whether a second follows |
 | Print Screen | Thumb on the middle and ring fingertips together |
 | Voice typing / on-screen keyboard | Thumb on the index and middle fingertips together: Windows voice typing on / off (Win+H). Twice quickly: the on-screen keyboard opens or closes; type on it with the right hand |
-| Esc | Make a fist (thumb tucked in) and open it again. Not when it is part of two fists, and not after holding the fist longer than 1.5 s. With only the left hand in view a quick fist waits about half a second, because two quick fists make the left hand the main hand instead |
+| Esc | Make a fist (thumb tucked in). Esc comes after 0.2 s while the fist is still closed, once per fist (open the hand before the next one). Only when it is the only fist in view: two fists are gestures off / on, and a right-hand fist is scrolling. With only the left hand in view, hold the fist about half a second, because two quick fists make the left hand the main hand instead |
 | Play / pause | Thumbs-up, held a moment |
 
 The shortcuts are set in `SECOND_KEYS` at the top of `hand_mouse.py` (e.g. `"middle": "ctrl+c"`), and

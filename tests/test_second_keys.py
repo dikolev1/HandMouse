@@ -115,14 +115,24 @@ check("index+middle twice -> on-screen keyboard", keys(m) == [("osk",)], keys(m)
 m, e = run(START + N(2, both("middle")) + N(4, both("middle+ring")) + REST)
 check("thumb slides from middle onto middle+ring -> Print Screen only", keys(m) == [("keys", (K["printscreen"],))], keys(m))
 
-# ---- fist -> Esc
-m, e = run(START + N(6, both("fist")) + REST)
-check("left fist then open -> Esc", keys(m) == [("keys", (K["esc"],))], keys(m))
+# ---- fist -> Esc, while the fist is still closed (KEY_FIST_HOLD), only when it is the only fist
+ESC = [("keys", (K["esc"],))]
+m, e = run(START + N(6, both("fist")))
+check("left fist held 0.4 s, not opened yet -> Esc", keys(m) == ESC, keys(m))
 check("...and no scrolling", mouse(m) == [], mouse(m))
+m, e = run(START + N(2, both("fist")) + REST)
+check("very quick fist (0.12 s) -> nothing", keys(m) == [], keys(m))
 m, e = run(START + N(40, both("fist")) + REST)
-check("left fist held 2.5 s (resting) -> nothing", keys(m) == [], keys(m))
+check("left fist held 2.5 s -> Esc once, not repeated", keys(m) == ESC, keys(m))
+m, e = run(START + N(6, both("fist")) + N(6, both()) + N(6, both("fist")) + REST)
+check("fist, open, fist again -> Esc twice", keys(m) == ESC * 2, keys(m))
 m, e = run(START + N(24, lambda t: [left("fist"), V.make(px=0.75, fist=True, label="Right")]) + REST)
 check("two fists (gestures off) -> no Esc", keys(m) == [] and e.gestures_off, (keys(m), e.gestures_off))
+m, e = run(START + N(2, both("fist")) + N(20, lambda t: [left("fist"), V.make(px=0.75, fist=True, label="Right")]) + REST)
+check("left fist, right fist 0.12 s later (two fists) -> no Esc", keys(m) == [], keys(m))
+m, e = run(START + N(8, lambda t: [left(), V.make(px=0.75, fist=True, label="Right")])
+           + N(8, lambda t: [left("fist"), V.make(px=0.75, fist=True, label="Right")]) + REST)
+check("right hand already a fist (scrolling), then left fist -> no Esc", keys(m) == [], keys(m))
 m, e = run(N(14, only_left()) + N(3, only_left("fist")) + N(3, only_left()) + N(3, only_left("fist")) + N(10, only_left()))
 check("left hand alone, fist twice -> becomes the main hand, no Esc", e.main_side == "left" and keys(m) == [],
       (e.main_side, keys(m)))
@@ -133,7 +143,7 @@ check("left thumbs-up held 1 s -> play/pause once", keys(m) == [("keys", (K["pla
 m, e = run(START + N(3, both("thumbs")) + REST)
 check("brief thumbs-up -> nothing", keys(m) == [], keys(m))
 m, e = run(START + N(16, both("thumbs")) + N(4, both("fist")) + REST)
-check("thumbs-up, then fist, then open -> play/pause, no Esc", keys(m) == [("keys", (K["playpause"],))], keys(m))
+check("thumbs-up, then fist -> play/pause, no Esc", keys(m) == [("keys", (K["playpause"],))], keys(m))
 
 # ---- the main hand is not affected, and noise does nothing
 m, e = run(START + N(6, lambda t: [left(), right("m")]) + REST)
@@ -179,20 +189,15 @@ check("Ctrl+C pinch with a dropout -> one Ctrl+C", keys(m) == [("keys", (CTRL, o
 m, e = run(START + N(2, both("index")) + N(8, both("fist")) + REST)
 check("thumb brushes the index while closing a fist -> Esc only, no Alt+Tab", keys(m) == [("keys", (K["esc"],))], keys(m))
 
-# ---- Esc as tested live (2026-10-14): left hand alone in view, relaxed open hand afterwards
-ESC = [("keys", (K["esc"],))]
+# ---- Esc with the left hand alone in view, and a relaxed open hand in between (live tests 2026-10-14)
 m, e = run(N(14, only_left()) + N(3, only_left("fist")) + N(20, only_left()))
-check("left hand alone: quick fist, open -> Esc (after a short wait)", keys(m) == ESC and e.main_side == "right",
-      (keys(m), e.main_side))
-m, e = run(N(14, only_left()) + N(12, only_left("fist")) + N(2, only_left()))
-check("left hand alone: slower fist (0.75 s) -> Esc at once when it opens", keys(m) == ESC, keys(m))
-relaxed_open = lambda t: [bent(None, (1.7, 1.4, 1.3, 1.8))]
-m, e = run(N(14, relaxed_open) + N(4, only_left("fist")) + N(20, relaxed_open))
-check("left alone, opened relaxed (fingers read 1.7 1.4 1.3 1.8) -> Esc", keys(m) == ESC, keys(m))
-m, e = run(START + N(4, both("fist")) + N(10, lambda t: [bent(None, (1.7, 1.4, 1.3, 1.8)), right()]))
-check("both hands in view, opened relaxed -> Esc", keys(m) == ESC, keys(m))
-m, e = run(N(14, only_left()) + N(3, only_left("fist")) + N(2, only_left()) + N(30, lambda t: []))
-check("left alone: quick fist, then the hand leaves -> Esc still", keys(m) == ESC, keys(m))
+check("left hand alone: quick fist (0.19 s) -> nothing (could be half of the main-hand switch)",
+      keys(m) == [] and e.main_side == "right", (keys(m), e.main_side))
+m, e = run(N(14, only_left()) + N(10, only_left("fist")))
+check("left hand alone: fist held 0.6 s -> Esc while still closed", keys(m) == ESC, keys(m))
+relaxed_open = lambda t: [bent(None, (1.7, 1.4, 1.3, 1.8)), right()]
+m, e = run(START + N(6, both("fist")) + N(6, relaxed_open) + N(6, both("fist")) + REST)
+check("fist, opened relaxed (fingers read 1.7 1.4 1.3 1.8), fist -> Esc twice", keys(m) == ESC * 2, keys(m))
 
 # ---- Alt+Tab stops at the first / last window instead of wrapping around
 def run_w(frames, windows, fps=16):
