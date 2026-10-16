@@ -1287,6 +1287,19 @@ def tip_distances(h: Hand) -> dict:
     return {"index": h.side["x1"], "middle": h.pinch[0], "ring": h.pinch[1]}
 
 
+TIPS = {"index": INDEX_TIP, "middle": MIDDLE_TIP, "ring": RING_TIP}
+
+
+def tip_distances_2d(h: Hand) -> dict:
+    """The same in the picture (x palm length in the picture)."""
+    return {n: thumb_tip_2d(h, t) for n, t in TIPS.items()}
+
+
+def fully_in_view(h: Hand, margin: float = 0.02) -> bool:
+    """No part of the hand at the edge of the picture (a hand coming into view is often misread)."""
+    return all(margin < x < 1 - margin and margin < y < 1 - margin for x, y in h.img)
+
+
 def classify_tips(d: dict) -> str:
     """Which fingertip(s) the thumb is on, from the three distances. Fingertips side by side sit close, so a
     pair is told from a single tip by comparing the distances (like the middle click), not by fixed limits."""
@@ -1363,6 +1376,7 @@ class SecondHandKeys:
     def _clear(self):
         self.touching, self.counts, self.start, self.last_raw = False, {}, 0.0, -1e9
         self.dists, self.spoiled, self.fist_reads = {}, "", 0     # distances of the touch's fingertip frames
+        self.dists2 = {}                # the same in the picture (for the log)
         self.sw_x, self.sw_index, self.sw_count = None, 0, None
         self.fist_since, self.fist_frames, self.fist_ok = None, 0, False
         self.thumb_since, self.thumb_last, self.thumb_x, self.thumb_moved = None, -1e9, None, False
@@ -1420,15 +1434,22 @@ class SecondHandKeys:
                 self.spoiled = "the hand closed into a fist"
         else:
             self.fist_reads = 0
+        if c is not None and not self.touching and not fully_in_view(h):
+            c = None                    # the hand is cut off by the picture edge (coming into view): no new touch
         if c is not None:
             self.last_raw = now
             if not self.touching:
                 self.touching, self.counts, self.start = True, {}, now
-                self.dists, self.spoiled = {}, ""
+                self.dists, self.dists2, self.spoiled = {}, {}, ""
             self.counts[c] = self.counts.get(c, 0) + 1
             if c != "little base":
+                # which finger(s): the smaller of the 3D and the picture distance (the depth guess often puts the
+                # index closer than the middle finger the thumb is on); the picture is ignored when 3D says clearly
+                # apart (thumb in front of / behind the fingers with the hand turned)
+                d2 = tip_distances_2d(h)
                 for n, v in tip_distances(h).items():
-                    self.dists.setdefault(n, []).append(v)
+                    self.dists.setdefault(n, []).append(min(v, d2[n]) if v < INDEX_START_3D_MAX else v)
+                    self.dists2.setdefault(n, []).append(d2[n])
             if self.switcher:
                 self._switch_step(h, k)
             elif (self.actions.get(self.dominant(), (None, ""))[1] == "Alt+Tab"
@@ -1448,13 +1469,15 @@ class SecondHandKeys:
         name, frames = self.dominant(), sum(self.counts.values())
         if DIAGNOSTICS and frames:
             med = self._medians() if self.dists else {}
-            log.info("second hand touch %.2f s, %d frames: thumb to index %s middle %s ring %s (median), on the "
-                     "palm base %d -> %s%s", self.last_raw - self.start, frames, _num(med.get("index", math.inf)),
-                     _num(med.get("middle", math.inf)), _num(med.get("ring", math.inf)),
+            m2 = {n: sorted(v)[len(v) // 2] for n, v in self.dists2.items()}
+            log.info("second hand touch %.2f s, %d frames: thumb to index %s middle %s ring %s (median, picture "
+                     "%s %s %s), on the palm base %d -> %s%s", self.last_raw - self.start, frames,
+                     _num(med.get("index", math.inf)), _num(med.get("middle", math.inf)),
+                     _num(med.get("ring", math.inf)), _num(m2.get("index", math.inf)), _num(m2.get("middle", math.inf)), _num(m2.get("ring", math.inf)),
                      self.counts.get("little base", 0), name,
                      f" (cancelled: {self.spoiled})" if self.spoiled else (" (too short)" if frames < 2 else ""))
         spoiled = self.spoiled
-        self.touching, self.counts, self.dists, self.spoiled = False, {}, {}, ""
+        self.touching, self.counts, self.dists, self.dists2, self.spoiled = False, {}, {}, {}, ""
         if self.switcher:
             self._close_switcher()
             return

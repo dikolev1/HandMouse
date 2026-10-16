@@ -301,6 +301,32 @@ m, e = run(START + N(5, both("middle")) + REST)
 check("thumb on the middle tip is still Ctrl+C (not taken by the easier index start)",
       keys(m) == [("keys", (CTRL, ord("C")))], keys(m))
 
+# ---- copy / paste read as Win+H / Print Screen (2026-10-16 11:53-11:54): the depth guess put the index closer
+# than the middle finger the thumb was on (3D index 0.35, middle 0.40; picture: middle 0.14, index 0.45)
+def misread(pose, idx, mid, ring, px=0.3):
+    """Thumb on a fingertip in the picture, but 3D distances as the hand model read them."""
+    h = left(pose, px); h.__dict__["side"] = {"x1": idx, "x2": hm.math.inf}; h.__dict__["pinch"] = (mid, ring)
+    return h
+for name, h, want in (("copy: thumb on middle tip, 3D index 0.35 middle 0.40 (log 11:54:09)",
+                       misread("middle", 0.35, 0.40, 0.58), [("keys", (CTRL, ord("C")))]),
+                      ("copy: 3D index 0.37 middle 0.41 ring 0.46 (log 11:53:31)",
+                       misread("middle", 0.37, 0.41, 0.46), [("keys", (CTRL, ord("C")))]),
+                      ("paste: thumb on ring tip, 3D middle 0.30 ring 0.32",
+                       misread("ring", 0.55, 0.30, 0.32), [("keys", (CTRL, ord("V")))])):
+    m, e = run(START + N(5, lambda t, h=h: [h, right()]) + REST)
+    check(f"{name} (picture: {', '.join(f'{k} {v:.2f}' for k, v in hm.tip_distances_2d(h).items())}) -> "
+          f"{'Ctrl+C' if want[0][1][1] == ord('C') else 'Ctrl+V'}", keys(m) == want, keys(m))
+m, e = run(START + N(5, both("middle+ring")) + REST)
+check("a real middle+ring touch is still Print Screen", keys(m) == [("keys", (K["printscreen"],))], keys(m))
+m, e = run(START + N(5, both("index+middle")) + REST)
+check("a real index+middle touch is still Win+H", keys(m) == [("keys", (WIN, ord("H")))], keys(m))
+low = lambda pose: (lambda t: [V.make(px=0.3, py=0.97, pinch={"middle+ring": "mr", "middle": "m"}[pose], label="Left"),
+                               right()])
+edge_open = lambda t: [V.make(px=0.3, py=0.97, label="Left"), right()]
+print("   hand at the bottom edge fully in view:", hm.fully_in_view(V.make(px=0.3, py=0.97, label="Left")))
+m, e = run(N(14, edge_open) + N(6, low("middle+ring")) + N(16, edge_open))
+check("hand coming up from the bottom edge (cut off), thumb on middle+ring -> nothing", keys(m) == [], keys(m))
+
 # ---- settings
 hm.SECOND_HAND_KEYS = False
 m, e = run(START + N(5, both("middle")) + REST)

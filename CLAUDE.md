@@ -200,6 +200,11 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
   button is middle if the latest 2 frames say middle (`ClickTracker._choose`); a 2+ frame tap that ends before
   the delay still clicks on release; the late-ring upgrade also works on a double-click press
   (`tests/test_middle_click.py`). Timing rules in frames change meaning when the frame rate changes.
+- **Left copy / paste read as Win+H / Print Screen (2026-10-16).** Debug picture: thumb on the middle tip, 3D
+  index 0.35 < middle 0.40 (so "index+middle"), picture middle 0.14 / index 0.45. The touch's finger(s) are now
+  chosen from per-frame min(3D, picture) distances (picture ignored when 3D >= `INDEX_START_3D_MAX`); the touch
+  log line shows both. And a left-hand touch can't start while the hand is cut off by the picture edge
+  (`fully_in_view`): a hand coming up from the bottom was read as middle+ring.
 - **Toggles need a real release.** Two fists used to switch on and off forever, because one dropped frame looked
   like "released". Re-arming now needs an open hand, or no hands, for 0.4 s.
 - **Image enhancement made detection worse.** CLAHE, gamma and grayscale were tried and measured: they
