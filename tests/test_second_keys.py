@@ -154,16 +154,33 @@ check("fist (Esc), then opening flicks the thumb out -> Esc only", keys(m) == ES
 m, e = run(START + N(8, both("fist")) + N(6, both("thumbs")) + N(8, both("fist")) + REST)
 check("fist (Esc), thumbs-up, thumb in -> Esc then play/pause", keys(m) == ESC + PP, keys(m))
 move = lambda x0, x1, n: [both("thumbs", x0 + (x1 - x0) * k / n) for k in range(1, n + 1)]
-m, e = run(START + N(4, both("thumbs", 0.3)) + move(0.3, 0.4, 6) + N(4, both("thumbs", 0.4)) + REST)
+hold = lambda x, n: N(n, both("thumbs", x))
+m, e = run(START + hold(0.3, 4) + move(0.3, 0.45, 6) + hold(0.45, 6) + REST)
 check("thumbs-up moved right one step -> next track", keys(m) == NEXT, keys(m))
-m, e = run(START + N(4, both("thumbs", 0.4)) + move(0.4, 0.3, 6) + N(4, both("thumbs", 0.3)) + REST)
+m, e = run(START + hold(0.45, 4) + move(0.45, 0.3, 6) + hold(0.3, 6) + REST)
 check("thumbs-up moved left one step -> previous track", keys(m) == PREV, keys(m))
-m, e = run(START + N(4, both("thumbs", 0.3)) + move(0.3, 0.48, 10) + N(4, both("thumbs", 0.48)) + REST)
-check("thumbs-up moved right two steps -> next track twice", keys(m) == NEXT * 2, keys(m))
-m, e = run(START + N(4, both("thumbs", 0.3)) + move(0.3, 0.4, 6) + N(8, both("fist", 0.4)) + REST)
+m, e = run(START + hold(0.3, 4) + move(0.3, 0.58, 14) + hold(0.58, 8) + REST)
+check("thumbs-up moved right two steps (slowly) -> next track twice", keys(m) == NEXT * 2, keys(m))
+m, e = run(START + hold(0.3, 4) + move(0.3, 0.45, 6) + N(8, both("fist", 0.45)) + REST)
 check("moved right, then thumb tucked in -> next track only (no play/pause, no Esc)", keys(m) == NEXT, keys(m))
-m, e = run(START + N(4, both("thumbs", 0.3)) + move(0.3, 0.35, 6) + N(8, both("fist", 0.35)) + REST)
+m, e = run(START + hold(0.3, 4) + move(0.3, 0.37, 6) + N(8, both("fist", 0.37)) + REST)
 check("small drift (less than a step), then thumb in -> play/pause only", keys(m) == PP, keys(m))
+# 2026-10-16 11:42: five skips in 1.6 s (back, back, next, next, back) while the hand moved back and forth
+wobble = [both("thumbs", 0.4 + 0.07 * (1 if (k // 3) % 2 else -1)) for k in range(30)]
+m, e = run(START + hold(0.4, 4) + wobble + REST)
+check("thumbs-up wobbling +-0.07 back and forth for 2 s -> nothing", keys(m) == [], keys(m))
+def run_small(frames, fps=16):
+    """The hand reads at 40% of its normal size (a sideways fist looked small on 2026-10-16)."""
+    m = V.FakeMouse(); e = hm.Engine(m, 0, 0, 1920, 1080, ref_palm=left("thumbs").palm / 0.4); t = 0.0
+    for f in frames:
+        hs = f(t); e.update(hs if isinstance(hs, list) else [hs], t); t += 1 / fps
+    return m, e
+m, e = run_small(START + hold(0.4, 4) + wobble + REST)
+check("small-looking hand (size 0.4) wobbling +-0.07 -> nothing", keys(m) == [], (keys(m), round(e._k(left("thumbs")), 2)))
+m, e = run(START + hold(0.3, 4) + move(0.3, 0.45, 6) + hold(0.45, 6) + move(0.45, 0.28, 6) + hold(0.28, 8) + REST)
+check("one step right, then back past the start -> next track only (no previous)", keys(m) == NEXT, keys(m))
+m, e = run(START + move(0.3, 0.46, 2) + hold(0.46, 10) + REST)
+check("hand still forming the thumbs-up while it moves -> nothing", keys(m) == [], keys(m))
 
 # ---- the main hand is not affected, and noise does nothing
 m, e = run(START + N(6, lambda t: [left(), right("m")]) + REST)

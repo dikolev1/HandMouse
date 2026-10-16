@@ -267,7 +267,9 @@ INDEX_HOLD_2D = 0.30        # a held index pinch also stays held while the thumb
 KEY_FIST_HOLD = 0.2         # the fist acts once it has been closed this long (s), without opening it
 KEY_THUMB_MIN = 0.15        # the thumbs-up must be shown this long (s) before tucking the thumb counts (so a
                             # thumb flicking out while a fist opens or closes does nothing)
-TRACK_STEP = 0.08           # thumbs-up moved this far left / right (fraction of the picture width) = one track
+TRACK_STEP = 0.12           # thumbs-up moved this far left / right (fraction of the picture width) = one track.
+                            # Counted only after the thumbs-up was steady KEY_THUMB_MIN; one direction per thumbs-up
+TRACK_REPEAT = 0.4          # at least this long (s) between two track skips
 
 # Window swipe: with both hands in view, move the SECOND hand (the left one) quickly left or right.
 # The main (right) hand never swipes.
@@ -1349,6 +1351,8 @@ class SecondHandKeys:
         self.fist_since, self.fist_frames, self.fist_ok = None, 0, False
         self.thumb_since, self.thumb_last, self.thumb_x, self.thumb_moved = None, -1e9, None, False
         self.thumb_real = -1e9          # last time a thumbs-up held at least KEY_THUMB_MIN was seen
+        self.thumb_dir, self.thumb_skip = 0, -1e9   # track-skip direction of this thumbs-up, last skip time
+        self.thumb_sx = None            # smoothed thumbs-up position (x)
 
     def reset(self):
         """Let go of everything (hand lost, gestures off, pause, quit). A waiting single tap still acts."""
@@ -1494,18 +1498,27 @@ class SecondHandKeys:
                 and thumb_out(h) > (VOLUME_THUMB_KEEP if on else VOLUME_THUMB_OUT))
         if pose:
             self.thumb_last = now
+            x = h.center[0]
             if not on:
-                self.thumb_since, self.thumb_x, self.thumb_moved = now, h.center[0], False
+                self.thumb_since, self.thumb_x, self.thumb_moved, self.thumb_dir = now, None, False, 0
+                self.thumb_sx = x
                 return
-            if now - self.thumb_since >= KEY_THUMB_MIN:
-                self.thumb_real = now
-            step = TRACK_STEP * k
-            dx = h.center[0] - self.thumb_x
-            if abs(dx) >= step:
-                d = 1 if dx > 0 else -1
+            self.thumb_sx = 0.5 * x + 0.5 * self.thumb_sx       # smoothed: a jittery hand doesn't skip
+            if now - self.thumb_since < KEY_THUMB_MIN:
+                return                          # still forming the thumbs-up: moving now doesn't count
+            self.thumb_real = now
+            if self.thumb_x is None:
+                self.thumb_x = self.thumb_sx    # the start point: where the thumbs-up became steady
+            # the hand model reads a sideways fist small (k < 1), which made the step tiny: never below 80%
+            step = TRACK_STEP * max(k, 0.8)
+            dx = self.thumb_sx - self.thumb_x
+            d = 1 if dx > 0 else -1
+            if abs(dx) >= step and d != -self.thumb_dir and now - self.thumb_skip >= TRACK_REPEAT:
                 self.thumb_x += d * step        # the start point follows: each further step is one more track
-                self.thumb_moved = True
+                self.thumb_moved, self.thumb_dir, self.thumb_skip = True, d, now
                 self._do("thumbs-up right" if d > 0 else "thumbs-up left")
+            if self.thumb_dir and dx * self.thumb_dir < 0:
+                self.thumb_x = self.thumb_sx    # moving back after a skip: no skip the other way, start again here
         elif on:
             if (is_fist(h, keep=True) and not self.thumb_moved
                     and self.thumb_last - self.thumb_since >= KEY_THUMB_MIN):
