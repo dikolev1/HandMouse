@@ -29,7 +29,8 @@ Keyboard shortcuts with the other hand (your LEFT hand); pinches act when the th
   Print Screen    thumb on middle AND ring fingertips
   voice typing    thumb on index AND middle fingertips (Win+H); twice quickly = on-screen keyboard on / off
   Esc             make a fist (the only fist in view)
-  play / pause    thumbs-up
+  play / pause    thumbs-up, then tuck the thumb into the fist
+  next / previous thumbs-up moved right / left (one track per step)
 
 Tray icon (next to the clock): left-click stops / resumes tracking; right-click for the menu
 (Camera & log window, Gestures on, Stop / Resume tracking, Gestures help, Start with Windows, Re-learn my hand size,
@@ -222,7 +223,9 @@ SECOND_HAND_GESTURES = False
 #   "fist"          fist with the thumb tucked in, held KEY_FIST_HOLD (no need to open it), once per fist. Only
 #                   when it is the only fist (not two fists, not while the main hand scrolls). With this hand
 #                   alone in view it waits GRAB_MAX + 0.15 s: two quick fists switch the main hand instead
-#   "thumbs-up"     thumbs-up held KEY_THUMB_HOLD
+#   "thumbs-up, thumb in"   thumbs-up (at least KEY_THUMB_MIN), then the thumb tucked into the fist
+#   "thumbs-up right" / "thumbs-up left"   thumbs-up moved sideways, one per TRACK_STEP (tucking the thumb
+#                   afterwards does nothing)
 #   "... twice"     the same gesture twice quickly. The single one then waits KEY_DOUBLE_WINDOW to be sure.
 # Keys: ctrl, alt, shift, win, a-z, 0-9, f1-f24, enter, esc, tab, space, backspace, delete, insert, home, end,
 # pageup, pagedown, up, down, left, right, printscreen, playpause, nexttrack, prevtrack, mute, joined with +.
@@ -238,7 +241,9 @@ SECOND_KEYS = {
     "index+middle": "win+h",            # Windows voice typing on / off
     "index+middle twice": "keyboard",
     "fist": "esc",
-    "thumbs-up": "playpause",
+    "thumbs-up, thumb in": "playpause",
+    "thumbs-up right": "nexttrack",
+    "thumbs-up left": "prevtrack",
 }
 KEY_DOUBLE_WINDOW = 0.45    # a second tap this soon (s) after letting go makes it "twice"
 KEY_RELEASE_DELAY = 0.18    # the thumb must be away this long (s) before a pinch counts as let go, so a few
@@ -257,7 +262,9 @@ INDEX_HOLD_2D = 0.30        # a held index pinch also stays held while the thumb
                             # reads 0.5-0.65 in 3D (= apart) while the "OK" sign is clearly held and the hand
                             # moves to pick a window (debug pictures 2026-10-14)
 KEY_FIST_HOLD = 0.2         # the fist acts once it has been closed this long (s), without opening it
-KEY_THUMB_HOLD = 0.35       # thumbs-up held this long (s) presses play / pause (once per thumbs-up)
+KEY_THUMB_MIN = 0.15        # the thumbs-up must be shown this long (s) before tucking the thumb counts (so a
+                            # thumb flicking out while a fist opens or closes does nothing)
+TRACK_STEP = 0.08           # thumbs-up moved this far left / right (fraction of the picture width) = one track
 
 # Window swipe: with both hands in view, move the SECOND hand (the left one) quickly left or right.
 # The main (right) hand never swipes.
@@ -1240,10 +1247,17 @@ def parse_keys(text: str):
     return vks
 
 
+_MEDIA_LABELS = {"playpause": "Play/Pause", "nexttrack": "Next track", "prevtrack": "Previous track",
+                 "mute": "Mute"}
+
+
 def key_label(text: str) -> str:
     """"ctrl+c" -> "Ctrl+C", "keyboard" -> "on-screen keyboard"."""
-    if text.strip().lower() == "keyboard":
+    t = text.strip().lower()
+    if t == "keyboard":
         return "on-screen keyboard"
+    if t in _MEDIA_LABELS:
+        return _MEDIA_LABELS[t]
     return "+".join(p.strip().capitalize() for p in text.split("+"))
 
 
@@ -1292,7 +1306,7 @@ class SecondHandKeys:
     """Keyboard shortcuts from the second hand (SECOND_KEYS). A pinch acts when the thumb lets go, decided from
     the median distances over the whole touch (a few misread frames don't change it); "twice" gestures wait for
     a possible second tap; the Alt+Tab pinch held keeps the window switcher open; a fist presses its key when
-    the hand opens; a thumbs-up when held."""
+    the hand opens; a thumbs-up when the thumb is tucked in, or moved sideways for the tracks."""
 
     def __init__(self, mouse):
         self.mouse = mouse
@@ -1315,7 +1329,8 @@ class SecondHandKeys:
         self.dists, self.spoiled, self.fist_reads = {}, "", 0     # distances of the touch's fingertip frames
         self.sw_x, self.sw_index, self.sw_count = None, 0, None
         self.fist_since, self.fist_frames, self.fist_ok = None, 0, False
-        self.thumb_since, self.thumb_last, self.thumb_fired = None, -1e9, False
+        self.thumb_since, self.thumb_last, self.thumb_x, self.thumb_moved = None, -1e9, None, False
+        self.thumb_real = -1e9          # last time a thumbs-up held at least KEY_THUMB_MIN was seen
 
     def reset(self):
         """Let go of everything (hand lost, gestures off, pause, quit). A waiting single tap still acts."""
@@ -1354,7 +1369,7 @@ class SecondHandKeys:
                 self.last_raw = now
             return
         self._pinch(h, now, k)
-        self._thumbs_up(h, now)
+        self._thumbs_up(h, now, k)
         self._fist(h, now, main_in_view, two_fists)
 
     # ---- pinches
@@ -1453,29 +1468,44 @@ class SecondHandKeys:
         log.info("second hand: Alt+Tab let go - switched window")
 
     # ---- fist and thumbs-up
-    def _thumbs_up(self, h: Hand, now: float):
+    def _thumbs_up(self, h: Hand, now: float, k: float = 1.0):
+        """Thumbs-up, then the thumb tucked into the fist -> play / pause. A thumbs-up moved left / right ->
+        previous / next track, one per TRACK_STEP (tucking the thumb afterwards does nothing then)."""
         on = self.thumb_since is not None
         pose = (max(h.ext) < (FIST_KEEP if on else FIST_CURL)
                 and thumb_out(h) > (VOLUME_THUMB_KEEP if on else VOLUME_THUMB_OUT))
         if pose:
             self.thumb_last = now
             if not on:
-                self.thumb_since, self.thumb_fired = now, False
-            elif not self.thumb_fired and now - self.thumb_since >= KEY_THUMB_HOLD:
-                self.thumb_fired = True
-                self._do("thumbs-up")
-        elif on and now - self.thumb_last > 0.2:
-            self.thumb_since = None
+                self.thumb_since, self.thumb_x, self.thumb_moved = now, h.center[0], False
+                return
+            if now - self.thumb_since >= KEY_THUMB_MIN:
+                self.thumb_real = now
+            step = TRACK_STEP * k
+            dx = h.center[0] - self.thumb_x
+            if abs(dx) >= step:
+                d = 1 if dx > 0 else -1
+                self.thumb_x += d * step        # the start point follows: each further step is one more track
+                self.thumb_moved = True
+                self._do("thumbs-up right" if d > 0 else "thumbs-up left")
+        elif on:
+            if (is_fist(h, keep=True) and not self.thumb_moved
+                    and self.thumb_last - self.thumb_since >= KEY_THUMB_MIN):
+                self.thumb_since = None
+                self._do("thumbs-up, thumb in")
+            elif now - self.thumb_last > 0.3:
+                self.thumb_since = None         # thumbs-up gone without tucking the thumb (hand opened)
 
     def _fist(self, h: Hand, now: float, main_in_view: bool, two_fists: bool):
         tucked = is_fist(h, keep=self.fist_since is not None)
         if self.fist_since is None:
             if tucked:
-                self.fist_since, self.fist_frames, self.fist_ok = now, 1, True
+                # a fist made by tucking the thumb of a thumbs-up is play / pause, not Esc
+                self.fist_since, self.fist_frames, self.fist_ok = now, 1, now - self.thumb_real > 0.4
             return
         self.fist_frames += tucked
-        if two_fists or (self.thumb_since is not None and self.thumb_fired):
-            self.fist_ok = False        # two fists (gestures off / on) or a thumbs-up: not this
+        if two_fists or now - self.thumb_real < 0.05:
+            self.fist_ok = False        # two fists (gestures off / on) or a real thumbs-up: not this
         if sorted(h.ext)[2] > SIDE_STRAIGHT:            # hand open again (two fingers straight): next fist counts
             self.fist_since = None
             return
@@ -2475,7 +2505,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Print Screen</h2><p>Thumb on the <b>middle and ring</b> fingertips together.</p></div>
  <div class="card"><h2>Voice typing / keyboard</h2><p>Thumb on the <b>index and middle</b> fingertips together: voice typing on / off (Win+H). <b>Twice quickly</b>: the on-screen keyboard opens / closes; type on it with the right hand.</p></div>
  <div class="card"><h2>Esc</h2><p>Make a <b>fist</b> (thumb tucked in): Esc comes once it has been closed a moment, no need to open it. Only when it is the only fist in view (two fists = gestures off / on). With only the left hand in view hold it about half a second (two quick fists would make the left hand the main hand instead).</p></div>
- <div class="card"><h2>Play / pause</h2><p><b>Thumbs-up</b>, held a moment.</p></div>
+ <div class="card"><h2>Play / pause, tracks</h2><p><b>Thumbs-up</b>, then tuck the thumb into the fist: play / pause. Thumbs-up moved <b>right</b>: next track, <b>left</b>: previous track (a longer move skips more).</p></div>
 </div>
 <h3>Main hand</h3>
 <p>Your <b>right hand</b> moves the cursor and clicks; the left one gives keyboard shortcuts (below). To use your <b>left hand</b> instead: show only the left hand and make a <b>fist twice</b> quickly. The app remembers it, also after a restart, until your right hand does the same.</p>

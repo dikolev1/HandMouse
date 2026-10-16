@@ -137,13 +137,33 @@ m, e = run(N(14, only_left()) + N(3, only_left("fist")) + N(3, only_left()) + N(
 check("left hand alone, fist twice -> becomes the main hand, no Esc", e.main_side == "left" and keys(m) == [],
       (e.main_side, keys(m)))
 
-# ---- thumbs-up -> play / pause
-m, e = run(START + N(16, both("thumbs")) + REST)
-check("left thumbs-up held 1 s -> play/pause once", keys(m) == [("keys", (K["playpause"],))], keys(m))
-m, e = run(START + N(3, both("thumbs")) + REST)
-check("brief thumbs-up -> nothing", keys(m) == [], keys(m))
-m, e = run(START + N(16, both("thumbs")) + N(4, both("fist")) + REST)
-check("thumbs-up, then fist -> play/pause, no Esc", keys(m) == [("keys", (K["playpause"],))], keys(m))
+# ---- thumbs-up: tuck the thumb in -> play / pause; move it sideways -> next / previous track
+PP, NEXT, PREV = [("keys", (K["playpause"],))], [("keys", (K["nexttrack"],))], [("keys", (K["prevtrack"],))]
+m, e = run(START + N(6, both("thumbs")) + N(8, both("fist")) + REST)
+check("thumbs-up, then thumb tucked into the fist -> play/pause once, no Esc", keys(m) == PP, keys(m))
+m, e = run(START + N(6, both("thumbs")) + N(8, both("fist")))
+check("...fires as the thumb goes in (hand still a fist)", keys(m) == PP, keys(m))
+m, e = run(START + N(32, both("thumbs")) + REST)
+check("thumbs-up held 2 s, then the hand opens -> nothing", keys(m) == [], keys(m))
+m, e = run(START + N(32, both("thumbs")))
+check("thumbs-up held (not tucked) -> nothing yet", keys(m) == [], keys(m))
+m, e = run(START + N(1, both("thumbs")) + N(8, both("fist")) + REST)
+check("thumb only flicks out for a frame, then fist -> Esc, no play/pause", keys(m) == ESC, keys(m))
+m, e = run(START + N(8, both("fist")) + N(1, both("thumbs")) + REST)
+check("fist (Esc), then opening flicks the thumb out -> Esc only", keys(m) == ESC, keys(m))
+m, e = run(START + N(8, both("fist")) + N(6, both("thumbs")) + N(8, both("fist")) + REST)
+check("fist (Esc), thumbs-up, thumb in -> Esc then play/pause", keys(m) == ESC + PP, keys(m))
+move = lambda x0, x1, n: [both("thumbs", x0 + (x1 - x0) * k / n) for k in range(1, n + 1)]
+m, e = run(START + N(4, both("thumbs", 0.3)) + move(0.3, 0.4, 6) + N(4, both("thumbs", 0.4)) + REST)
+check("thumbs-up moved right one step -> next track", keys(m) == NEXT, keys(m))
+m, e = run(START + N(4, both("thumbs", 0.4)) + move(0.4, 0.3, 6) + N(4, both("thumbs", 0.3)) + REST)
+check("thumbs-up moved left one step -> previous track", keys(m) == PREV, keys(m))
+m, e = run(START + N(4, both("thumbs", 0.3)) + move(0.3, 0.48, 10) + N(4, both("thumbs", 0.48)) + REST)
+check("thumbs-up moved right two steps -> next track twice", keys(m) == NEXT * 2, keys(m))
+m, e = run(START + N(4, both("thumbs", 0.3)) + move(0.3, 0.4, 6) + N(8, both("fist", 0.4)) + REST)
+check("moved right, then thumb tucked in -> next track only (no play/pause, no Esc)", keys(m) == NEXT, keys(m))
+m, e = run(START + N(4, both("thumbs", 0.3)) + move(0.3, 0.35, 6) + N(8, both("fist", 0.35)) + REST)
+check("small drift (less than a step), then thumb in -> play/pause only", keys(m) == PP, keys(m))
 
 # ---- the main hand is not affected, and noise does nothing
 m, e = run(START + N(6, lambda t: [left(), right("m")]) + REST)

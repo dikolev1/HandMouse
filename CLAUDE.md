@@ -91,7 +91,8 @@ is clearly wide open (so "twice" taps don't merge); 2 fist frames in a row cance
 | Thumb on middle + ring | Print Screen | |
 | Thumb on index + middle | Win+H (voice typing); twice: on-screen keyboard | `WinMouse.toggle_keyboard`: `osk.exe` via `os.startfile` (no admin needed), closed with `WM_SYSCOMMAND/SC_CLOSE` to `OSKMainClass` (both checked on the laptop) |
 | Fist (held `KEY_FIST_HOLD` 0.2 s) | Esc | Acts while closed, once per fist; re-armed when two fingers are straight again. Only the only fist in view (`two_fists` blocks it, incl. a right-hand scroll fist). Alone in view (no main hand) waits `GRAB_MAX`+0.15 s, since two quick fists are the main-hand switch. Was "on opening" until 2026-10-15; the user asked for it on closing |
-| Thumbs-up held `KEY_THUMB_HOLD` | Play/pause | Once per thumbs-up |
+| Thumbs-up (>= `KEY_THUMB_MIN` 0.15 s), then thumb tucked (`is_fist(keep=True)`) | Play/pause | Fires on the tuck. The resulting fist is not Esc (`thumb_real` within 0.4 s); a thumb that only flicks out (< 0.15 s) blocks nothing |
+| Thumbs-up moved right / left | Next / previous track | One per `TRACK_STEP` 0.08 (x hand size), start point follows (like the Alt+Tab steps); after a skip the tuck does nothing. Since 2026-10-16 (was "thumbs-up held 0.35 s = play/pause") |
 
 There are also hotkeys (Ctrl+Alt+H stop/resume, Ctrl+Alt+C re-learn hand size, Ctrl+Alt+Q quit) and a tray
 menu: Camera & log window, Gestures on, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size,
