@@ -11,7 +11,7 @@ make a fist twice quickly - remembered until the right hand does the same):
   right click     thumb touches ring fingertip
   middle click    thumb touches middle AND ring fingertips
   mouse button 4  thumb tip to INDEX fingertip ("OK" sign), other fingers up (usually Back)
-  mouse button 5  palm to the camera, fingers up, thumb folded across the palm onto the base of the ring /
+  mouse button 5  palm to the camera, fingers up, thumb folded across the palm onto the palm under the ring /
                   little finger (usually Forward)
   (a click is held while the fingers touch, so touch-and-move drags)
   volume          thumbs-up (fingers folded, thumb out): thumb straight up = 100%, turn the hand
@@ -471,36 +471,52 @@ def palm_length(h: Hand) -> float:
 
 # Which fingers (0 index .. 3 little) must stay straight for each button.
 SIDE_STRAIGHT_FINGERS = {"x1": (1, 2), "x2": (1, 2, 3)}
-# Button 5 spot: the line from the ring knuckle to the little-finger knuckle, and how far beyond its ends
-# (as a fraction of its length) still counts.
-X2_ZONE = (RING_MCP, PINKY_MCP, -0.4, 1.5)
+# Button 5 area: the palm under the ring and little finger. Its top edge is the line from the ring knuckle to the
+# little-finger knuckle, made X2_WIDEN of its length wider on both ends; it reaches X2_DEPTH of the way from those
+# knuckles down to the wrist. (It was only the knuckle line until 2026-10-16: a thumb on the palm under the little
+# finger, held there for a second, didn't count.)
+X2_WIDEN = 0.3
+X2_DEPTH = 0.55
 
 
-def _zone_distance(p, a, b, lo: float = -0.05, hi: float = 1.15) -> float:
-    """Distance from p to the line a-b, but only if p is beside that part of the line (its projection falls
-    between a and b, with the tolerance lo..hi); otherwise infinity."""
-    n = len(p)
-    ab = [b[i] - a[i] for i in range(n)]
-    ap = [p[i] - a[i] for i in range(n)]
-    L = sum(c * c for c in ab)
-    if L <= 0:
-        return math.inf
-    t = sum(ap[i] * ab[i] for i in range(n)) / L
-    if t < lo or t > hi:
-        return math.inf
-    t = min(max(t, 0.0), 1.0)
-    return math.dist(p, [a[i] + ab[i] * t for i in range(n)])
+def _segment_distance(p, a, b) -> float:
+    ab = (b[0] - a[0], b[1] - a[1])
+    L = ab[0] * ab[0] + ab[1] * ab[1]
+    t = 0.0 if L <= 0 else min(max(((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / L, 0.0), 1.0)
+    return math.dist(p, (a[0] + ab[0] * t, a[1] + ab[1] * t))
+
+
+def _area_distance(p, poly) -> float:
+    """0 when p is inside the convex polygon poly, otherwise the distance to its nearest edge."""
+    sign = 0
+    for i, a in enumerate(poly):
+        b = poly[(i + 1) % len(poly)]
+        cross = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+        s = (cross > 0) - (cross < 0)
+        if s and sign and s != sign:
+            return min(_segment_distance(p, poly[j], poly[(j + 1) % len(poly)]) for j in range(len(poly)))
+        sign = sign or s
+    return 0.0
+
+
+def x2_area(f) -> list:
+    """The button 5 area (see X2_WIDEN / X2_DEPTH) in picture coordinates: 4 corners."""
+    r, k, w = f[RING_MCP], f[PINKY_MCP], f[WRIST]
+    d = (k[0] - r[0], k[1] - r[1])
+    a = (r[0] - X2_WIDEN * d[0], r[1] - X2_WIDEN * d[1])
+    b = (k[0] + X2_WIDEN * d[0], k[1] + X2_WIDEN * d[1])
+    return [a, b, (b[0] + X2_DEPTH * (w[0] - k[0]), b[1] + X2_DEPTH * (w[1] - k[1])),
+            (a[0] + X2_DEPTH * (w[0] - r[0]), a[1] + X2_DEPTH * (w[1] - r[1]))]
 
 
 def side_ratios(h: Hand) -> dict:
     """"x1" (button 4): thumb tip to index fingertip in 3D (x palm length), like the clicks.
-    "x2" (button 5): thumb tip distance in the picture (x palm length in the picture) to the base of the ring /
-    little finger; infinity when the thumb is not beside that spot."""
+    "x2" (button 5): thumb tip distance in the picture (x palm length in the picture) to the palm area under the
+    ring / little finger (0 inside it)."""
     f = h.flat
     p = max(math.dist(f[WRIST], f[MIDDLE_MCP]), 1e-4)
-    a, b, lo, hi = X2_ZONE
     return {"x1": math.dist(h.world[THUMB_TIP], h.world[INDEX_TIP]) / palm_length(h),
-            "x2": _zone_distance(f[THUMB_TIP], f[a], f[b], lo, hi) / p}
+            "x2": _area_distance(f[THUMB_TIP], x2_area(f)) / p}
 
 
 def thumb_on_palm_base(h: Hand, held: bool = False) -> bool:
@@ -2522,7 +2538,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Right click</h2><p>Touch your thumb to your <b>ring</b> fingertip.</p></div>
  <div class="card"><h2>Middle click</h2><p>Touch your thumb to your middle <b>and</b> ring fingertips together.</p></div>
  <div class="card"><h2>Mouse button 4 (Back)</h2><p>Touch your thumb tip to your <b>index fingertip</b> (an "OK" sign), other fingers up.</p></div>
- <div class="card"><h2>Mouse button 5 (Forward)</h2><p>Palm towards the camera, fingers up. Fold your thumb across the palm onto the <b>base of your ring / little finger</b>.</p></div>
+ <div class="card"><h2>Mouse button 5 (Forward)</h2><p>Palm towards the camera, fingers up. Fold your thumb across the palm onto the <b>palm under your ring / little finger</b> (from their base about halfway down).</p></div>
  <div class="card"><h2>Volume</h2><p><b>Thumbs-up</b> (fingers folded, thumb out) and hold it a moment. Thumb straight up = 100%. Turn your hand until the thumb points down to lower the volume step by step to 0%. Tuck the thumb in to stop.</p></div>
  <div class="card"><h2>Scroll</h2><p>Make a <b>fist</b>. Move the fist down to scroll down, up to scroll up, left / right to scroll sideways. The further from where you closed it, the faster. Open the hand to stop.</p></div>
  <div class="card"><h2>Gestures off / on</h2><p>Hold <b>both</b> hands as fists for a second (beep first). Gestures turn off (orange badge on the tray icon): the cursor and all gestures ignore your hands, except two fists, which turn them back on the same way. To stop the camera completely, click the tray icon.</p></div>

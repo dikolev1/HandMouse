@@ -47,7 +47,7 @@ scroll, swipe windows, press buttons 4/5 and change the volume instead of giving
 | Right click | Thumb touches ring fingertip |
 | Middle click | Thumb touches middle and ring fingertips together |
 | Mouse button 4 (Back) | Thumb tip to the index fingertip ("OK" sign), other fingers up |
-| Mouse button 5 (Forward) | Palm towards the camera, fingers up: fold the thumb across the palm onto the base of the ring / little finger |
+| Mouse button 5 (Forward) | Palm towards the camera, fingers up: fold the thumb across the palm onto the palm under the ring / little finger (anywhere from their base about halfway down to the wrist) |
 | Volume | Thumbs-up (fingers folded, thumb out), held a moment. Thumb straight up = 100%; turn the hand until the thumb points down to lower it to 0%. Tuck the thumb in to stop. A fist with the thumb tucked in still scrolls |
 | Scroll | Make a fist. Move it down to scroll down, up to scroll up, left / right to scroll sideways; the further from where you closed it, the faster. Only the direction you moved further scrolls, so a little drift doesn't scroll sideways. Open the hand to stop |
 | Gestures off / on | Hold **both** hands as fists for a second (beep first). While off, nothing reacts to your hands except two fists, which turn gestures back on. Holding the fists switches only once; open a hand (or take your hands out of view) before switching again. A full stop (camera off) is on the tray icon or Ctrl+Alt+H |
