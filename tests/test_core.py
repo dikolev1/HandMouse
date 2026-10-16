@@ -14,6 +14,7 @@ class FakeMouse:
     def move(s, x, y): s.pos = (x, y); s.moves += 1
     def button(s, n, d): s.events.append((n, 'down' if d else 'up'))
     def wheel(s, d): s.events.append(('wheel', d))
+    def hwheel(s, d): s.events.append(('hwheel', d))
     def swipe(s, a, d): s.events.append(('swipe', d))
     def keys(s, vks): s.events.append(('keys', tuple(vks)))
     def key(s, vk, down): s.events.append(('key', vk, down))

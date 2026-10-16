@@ -69,7 +69,7 @@ hand does the same.
 | Mouse button 4 | Thumb tip on **index fingertip** ("OK"), middle and ring straight | `SideButtonTracker`, `INDEX_PINCH_MARGIN` |
 | Mouse button 5 | Palm to camera, thumb folded across the palm onto the **ring/little finger base** (measured in 2D) | `X2_ZONE`, `SIDE_TOUCH_ON` 0.12, `SIDE_FACING` |
 | Volume | Thumbs-up held `VOLUME_HOLD` 0.45 s; thumb up = 100%, turned to down = 0%; changes at most 150%/s | `ThumbVolume`, `thumb_out`, `thumb_angle`, `WinVolume` (pycaw) |
-| Scroll | Fist (thumb tucked) and move up/down from where it closed | `FistScroll`, `SCROLL_*` |
+| Scroll | Fist (thumb tucked) and move up/down, or left/right (`HSCROLL`, horizontal wheel), from where it closed. Only the axis moved further scrolls (`FistScroll.axis`, switches when the other is 1.5x bigger); sideways distance is converted to height units (`/ aspect`) so the same real move scrolls the same | `FistScroll`, `SCROLL_*`, `HSCROLL_*`, `tests/test_hscroll.py` |
 | Gestures off / on | Both hands as fists for `STOP_HOLD` 1 s; switches once per hold; open a hand (or hide hands) `STOP_REARM` 0.4 s to switch again | `Engine` two-fist block, `_rearm` |
 | Switch main hand | Only the non-main hand in view, fist twice quickly | `_switch_main`, `DoubleGrab` |
 | Window swipe | Disabled (it was second-hand-only); code is still there behind `SECOND_HAND_GESTURES` | `Swiper` |

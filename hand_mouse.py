@@ -16,7 +16,7 @@ make a fist twice quickly - remembered until the right hand does the same):
   (a click is held while the fingers touch, so touch-and-move drags)
   volume          thumbs-up (fingers folded, thumb out): thumb straight up = 100%, turn the hand
                   until the thumb points down to lower it to 0%
-  scroll          make a fist and move it up or down from where you closed it;
+  scroll          make a fist and move it up / down (or left / right) from where you closed it;
                   further = faster. Open the hand to stop.
   gestures off/on hold BOTH hands as fists for about a second: all gestures stop except two fists, which
                   turn them back on. A full stop (camera off) is in the tray icon / Ctrl+Alt+H.
@@ -179,6 +179,9 @@ SCROLL_BASE_SPEED = 2.0     # wheel notches per second just outside the dead zon
 SCROLL_GAIN = 80.0          # extra notches per second per full picture height of fist movement
 SCROLL_MAX_SPEED = 25.0     # notches per second, upper limit
 SCROLL_INVERT = False       # default: fist moves down = page scrolls down. True flips it.
+HSCROLL = True              # moving the fist left / right scrolls sideways (only the direction moved further scrolls)
+HSCROLL_INVERT = False      # default: fist moves right = page scrolls right. True flips it.
+HSCROLL_DEADZONE = 0.04     # like SCROLL_DEADZONE, for sideways (the same real distance as up / down)
 SCROLL_SMOOTH = True        # True = small smooth steps; False = whole wheel notches only
 INDEX_STRAIGHT = 1.45       # clicks only count while the index finger is straighter than this (stops a
                             # closing fist from clicking); same measure as FIST_CURL
@@ -893,6 +896,13 @@ def palm_center(h: Hand) -> tuple[float, float]:
     return sum(p[0] for p in pts) / 5, sum(p[1] for p in pts) / 5
 
 
+def scroll_speed(d: float, deadzone: float) -> float:
+    """Notches per second for a fist moved d (fraction of the picture height) from where it closed."""
+    if abs(d) < deadzone:
+        return 0.0
+    return math.copysign(min(SCROLL_BASE_SPEED + SCROLL_GAIN * (abs(d) - deadzone), SCROLL_MAX_SPEED), d)
+
+
 class FistScroll:
     """One hand's fist-scroll state: idle -> pending (fist seen) -> active (held FIST_ON_TIME) -> idle."""
 
@@ -903,42 +913,55 @@ class FistScroll:
         self.last_fist = -1e9
         self.anchor = None
         self.y = None
+        self.x = self.anchor_x = None
+        self.aspect = 0.5625
+        self.axis = None                # "v" / "h": the direction scrolling now
+        self.hrate = 0.0                # sideways scroll rate (notches per second, positive = right)
+
+    def follow(self, h: Hand):
+        """Smoothed fist position (also on frames whose finger shapes are unreadable)."""
+        x, y = h.center
+        self.y = y if self.y is None else 0.5 * y + 0.5 * self.y
+        self.x = x if self.x is None else 0.5 * x + 0.5 * self.x
+        self.aspect = h.aspect
 
     def update(self, h: Hand, now: float, k: float = 1.0) -> float:
-        """Returns the scroll rate in notches per second (positive = scroll down).
-        k = hand size relative to normal (smaller when further away), so the same real movement
+        """Returns the scroll rate in notches per second (positive = scroll down); the sideways rate is in
+        self.hrate. k = hand size relative to normal (smaller when further away), so the same real movement
         scrolls the same amount at any distance."""
         fist = is_fist(h, keep=self.state != "idle")
-        y = h.center[1]
-        self.y = y if self.y is None else 0.5 * y + 0.5 * self.y
+        self.follow(h)
         if fist:
             self.last_fist = now
             if self.state == "idle":
                 self.state, self.since = "pending", now
             elif self.state == "pending" and now - self.since >= FIST_ON_TIME:
-                self.state, self.anchor = "active", self.y
+                self.state, self.anchor, self.anchor_x, self.axis = "active", self.y, self.x, None
                 if not self.quiet:
                     log.info("fist: scroll mode on")
         elif now - self.last_fist >= (FIST_OFF_TIME if self.state == "active" else 0.05):
             if self.state == "active" and not self.quiet:
                 log.info("hand opened: scroll mode off")
-            self.state, self.anchor = "idle", None
-        if self.state != "active":
-            return 0.0
-        dy = (self.y - self.anchor) / k
-        if abs(dy) < SCROLL_DEADZONE:
-            return 0.0
-        rate = min(SCROLL_BASE_SPEED + SCROLL_GAIN * (abs(dy) - SCROLL_DEADZONE), SCROLL_MAX_SPEED)
-        return math.copysign(rate, dy)
+            self.state, self.anchor, self.anchor_x, self.axis = "idle", None, None, None
+        return self.hold_rate(k)
 
     def hold_rate(self, k: float = 1.0) -> float:
-        """Scroll rate from the current fist position without re-checking the finger shapes."""
+        """Scroll rates from the current fist position (vertical returned, sideways in self.hrate). Only the
+        direction the fist moved further scrolls; it stays that way until the other one is clearly bigger."""
+        self.hrate = 0.0
         if self.state != "active" or self.anchor is None:
             return 0.0
         dy = (self.y - self.anchor) / k
-        if abs(dy) < SCROLL_DEADZONE:
+        dx = (self.x - self.anchor_x) / k / self.aspect if HSCROLL and self.anchor_x is not None else 0.0
+        vy, vx = abs(dy) / SCROLL_DEADZONE, abs(dx) / HSCROLL_DEADZONE    # 1 = at the edge of the dead zone
+        if max(vx, vy) < 1.0:
+            self.axis = None
+        elif self.axis is None or (self.axis == "v" and vx > 1.5 * vy) or (self.axis == "h" and vy > 1.5 * vx):
+            self.axis = "h" if vx > vy else "v"
+        if self.axis == "h":
+            self.hrate = scroll_speed(dx, HSCROLL_DEADZONE)
             return 0.0
-        return math.copysign(min(SCROLL_BASE_SPEED + SCROLL_GAIN * (abs(dy) - SCROLL_DEADZONE), SCROLL_MAX_SPEED), dy)
+        return scroll_speed(dy, SCROLL_DEADZONE) if self.axis == "v" else 0.0
 
     @property
     def busy(self) -> bool:
@@ -1540,6 +1563,8 @@ class Engine:
         self.last_seen = -1e9
         self.last_t = None
         self.scroll_acc = 0.0
+        self.hscroll_acc = 0.0
+        self.hscroll_marks: list[tuple] = []    # (anchor_x, current_x) for the preview
         self.last_cursor = None
         self.last_swipe = ""
         self.gesture = ""               # what the main hand is doing, for the preview
@@ -1629,7 +1654,7 @@ class Engine:
             self.fists.clear()
         self.swiper.reset()
         self.keys.reset()
-        self.scroll_acc = 0.0
+        self.scroll_acc = self.hscroll_acc = 0.0
 
     # ---- which hand is which
     def _match(self, hands: list[Hand], now: float):
@@ -1732,6 +1757,7 @@ class Engine:
         self.last_t = now
         self.status = []
         self.scroll_marks = []
+        self.hscroll_marks = []
         self.gesture = ""
         req, self.gestures_request = self.gestures_request, None
         if req is not None:
@@ -1771,7 +1797,7 @@ class Engine:
         acting = hands if SECOND_HAND_GESTURES else [h for h in hands if h is main]    # hands whose gestures count
 
         # --- fist scroll (either hand)
-        rate = 0.0
+        rate = hrate = 0.0
         for key in list(self.fists):
             if key not in self.tracks:
                 del self.fists[key]
@@ -1779,15 +1805,20 @@ class Engine:
             fs = self.fists.setdefault(h.key, FistScroll())
             fs.quiet = self.gestures_off or h not in acting     # (still followed: two fists need both hands)
             if h.unsure:                        # finger shapes unreadable this frame: keep the last state
-                fs.y = h.center[1] if fs.y is None else 0.5 * h.center[1] + 0.5 * fs.y
+                fs.follow(h)
                 fs.last_fist = now if fs.state != "idle" else fs.last_fist
             r = fs.hold_rate(self._k(h)) if h.unsure else fs.update(h, now, self._k(h))
             if h not in acting:
                 continue
             if abs(r) > abs(rate):
                 rate = r
+            if abs(fs.hrate) > abs(hrate):
+                hrate = fs.hrate
             if fs.state == "active":
-                self.scroll_marks.append((fs.anchor, fs.y))
+                if fs.axis == "h":
+                    self.hscroll_marks.append((fs.anchor_x, fs.x))
+                else:
+                    self.scroll_marks.append((fs.anchor, fs.y))
         main_fist = main is not None and self.fists[main.key].busy
 
         # --- thumbs-up volume (either hand)
@@ -1817,8 +1848,8 @@ class Engine:
                 self.both_fists_since = now
                 log.info("both fists: gestures %s in %.1f s unless a hand opens",
                          "on" if self.gestures_off else "off", STOP_HOLD)
-            rate = 0.0
-            self.scroll_marks = []
+            rate = hrate = 0.0
+            self.scroll_marks, self.hscroll_marks = [], []
             if now - self.both_fists_since >= STOP_HOLD:
                 self.fist_stop_armed = False
                 self._set_gestures_off(not self.gestures_off, now, "two fists")
@@ -1827,13 +1858,13 @@ class Engine:
                 log.info("both fists released: nothing changed")
                 self.both_fists_since = None
             if two_fists and STOP_WITH_TWO_FISTS:
-                rate = 0.0                      # still holding the fists from the last stop
+                rate = hrate = 0.0              # still holding the fists from the last stop
 
         if not self.gestures_off:
             self._switch_main(hands, now)
         if self.gestures_off:                   # only two fists count now
-            self.scroll_acc = 0.0
-            self.scroll_marks = []
+            self.scroll_acc = self.hscroll_acc = 0.0
+            self.scroll_marks, self.hscroll_marks = [], []
             self.gesture = "gestures off"
             if self.want_status:
                 self._status(hands, main, 0.0, frozen=True)
@@ -1854,6 +1885,18 @@ class Engine:
             self.gesture = f"SCROLL {'down' if rate > 0 else 'up'}"
         else:
             self.scroll_acc = 0.0
+        if hrate:
+            delta = hrate * 120.0 * dt          # Windows: positive sideways wheel = right
+            if HSCROLL_INVERT:
+                delta = -delta
+            self.hscroll_acc += delta
+            step = int(self.hscroll_acc) if SCROLL_SMOOTH else int(self.hscroll_acc / 120) * 120
+            if step and hasattr(self.mouse, "hwheel"):
+                self.mouse.hwheel(step)
+                self.hscroll_acc -= step
+            self.gesture = f"SCROLL {'right' if hrate > 0 else 'left'}"
+        else:
+            self.hscroll_acc = 0.0
 
         # --- side buttons (mouse 4 / 5), every hand in use
         for key in list(self.sides):          # a hand that left: let go of its button after LOST_GRACE
@@ -2144,6 +2187,9 @@ class WinMouse:
     def wheel(self, delta: int):
         self.u.mouse_event(0x0800, 0, 0, int(delta), 0)
 
+    def hwheel(self, delta: int):
+        self.u.mouse_event(0x01000, 0, 0, int(delta), 0)     # MOUSEEVENTF_HWHEEL, positive = right
+
     @property
     def volume(self):
         if getattr(self, "_volume", None) is None:
@@ -2416,7 +2462,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Mouse button 4 (Back)</h2><p>Touch your thumb tip to your <b>index fingertip</b> (an "OK" sign), other fingers up.</p></div>
  <div class="card"><h2>Mouse button 5 (Forward)</h2><p>Palm towards the camera, fingers up. Fold your thumb across the palm onto the <b>base of your ring / little finger</b>.</p></div>
  <div class="card"><h2>Volume</h2><p><b>Thumbs-up</b> (fingers folded, thumb out) and hold it a moment. Thumb straight up = 100%. Turn your hand until the thumb points down to lower the volume step by step to 0%. Tuck the thumb in to stop.</p></div>
- <div class="card"><h2>Scroll</h2><p>Make a <b>fist</b>. Move the fist down to scroll down, up to scroll up. The further from where you closed it, the faster. Open the hand to stop.</p></div>
+ <div class="card"><h2>Scroll</h2><p>Make a <b>fist</b>. Move the fist down to scroll down, up to scroll up, left / right to scroll sideways. The further from where you closed it, the faster. Open the hand to stop.</p></div>
  <div class="card"><h2>Gestures off / on</h2><p>Hold <b>both</b> hands as fists for a second (beep first). Gestures turn off (orange badge on the tray icon): the cursor and all gestures ignore your hands, except two fists, which turn them back on the same way. To stop the camera completely, click the tray icon.</p></div>
 </div>
 <h3>Left hand: keyboard shortcuts</h3>
@@ -3123,6 +3169,13 @@ def draw_preview(cv2, frame, hands, engine, fps, paused, extra="", text_on_image
         dz = int(SCROLL_DEADZONE * h)
         cv2.rectangle(frame, (x - int(20 * f), ay - dz), (x + int(20 * f), ay + dz), (0, 200, 255), 1)
         cv2.arrowedLine(frame, (x, ay), (x, cy), (0, 200, 255), 3, tipLength=0.3)
+    for anchor, cur in getattr(engine, "hscroll_marks", []):   # sideways fist scroll
+        ax, cx = int(anchor * w), int(cur * w)
+        y = h - int(50 * f)
+        cv2.line(frame, (ax, y - int(30 * f)), (ax, y + int(30 * f)), (0, 200, 255), 2)
+        dz = int(HSCROLL_DEADZONE * h)
+        cv2.rectangle(frame, (ax - dz, y - int(20 * f)), (ax + dz, y + int(20 * f)), (0, 200, 255), 1)
+        cv2.arrowedLine(frame, (ax, y), (cx, y), (0, 200, 255), 3, tipLength=0.3)
     big = "STOPPED" if paused else (engine.gesture.upper() if engine.gesture else "")
     if big:
         (tw, th), _ = cv2.getTextSize(big, cv2.FONT_HERSHEY_SIMPLEX, 1.1 * f, 3)
