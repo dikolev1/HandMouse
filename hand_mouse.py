@@ -141,6 +141,9 @@ CURSOR_REANCHOR_AFTER = 3.0 # hand gone longer than this (s): cursor restarts wh
 # Watch the "t-mid" / "t-ring" numbers in --preview to tune these.
 TOUCH_ON = 0.34             # closer than this = fingers touching
 TOUCH_OFF = 0.46            # farther than this = fingers released (must be > TOUCH_ON)
+CLICK_2D = 0.20             # the depth guess often reads a thumb on a bent middle finger as 0.35-0.45 apart (the
+                            # camera picture shows it touching, ~0.14): while 3D is under TOUCH_OFF, a thumb this
+                            # close in the picture (x palm length in the picture) counts as touching
 BOTH_RATIO = 1.4            # 3-finger (middle click) when the two distances differ by less than this
                             # factor. Right click read as middle? lower it. Middle read as right/left? raise it.
 
@@ -1276,10 +1279,25 @@ def classify_tips(d: dict) -> str:
     return n1
 
 
-def thumb_index_2d(h: Hand) -> float:
-    """Thumb tip to index fingertip in the picture (x palm length in the picture)."""
+def thumb_tip_2d(h: Hand, tip: int) -> float:
+    """Thumb tip to a fingertip in the picture (x palm length in the picture)."""
     f = h.flat
-    return math.dist(f[THUMB_TIP], f[INDEX_TIP]) / max(math.dist(f[WRIST], f[MIDDLE_MCP]), 1e-4)
+    return math.dist(f[THUMB_TIP], f[tip]) / max(math.dist(f[WRIST], f[MIDDLE_MCP]), 1e-4)
+
+
+def thumb_index_2d(h: Hand) -> float:
+    return thumb_tip_2d(h, INDEX_TIP)
+
+
+def click_distances(h: Hand) -> tuple[float, float]:
+    """(thumb-middle, thumb-ring) for the clicks: the 3D distance, or the picture distance when that is clearly
+    touching (< CLICK_2D) and 3D is only a little apart (< TOUCH_OFF). When 3D says clearly apart the picture is
+    ignored (a thumb behind the finger, hand turned sideways)."""
+    out = []
+    for d3, tip in zip(h.pinch, (MIDDLE_TIP, RING_TIP)):
+        d2 = thumb_tip_2d(h, tip) if d3 < TOUCH_OFF else math.inf
+        out.append(min(d3, d2) if d2 < CLICK_2D else d3)
+    return out[0], out[1]
 
 
 def second_contact(h: Hand, held: str | None = None) -> str | None:
@@ -1974,7 +1992,7 @@ class Engine:
         self._learn_ref(main)
 
         # --- clicks (main hand; not while it makes a fist or the index finger is folding)
-        dm, dr = main.pinch
+        dm, dr = click_distances(main)
         side_busy = main.key in self.sides and self.sides[main.key].touching is not None
         if not main.unsure:                     # unreadable finger shapes: keep the current click state
             self.clicks.update(dm, dr, now, suppress=main_fist or side_busy or main.ext[0] < INDEX_STRAIGHT,
@@ -2070,7 +2088,8 @@ class Engine:
             extra = " zoom" if h.zoomed else ""
             extra += " found-again" if h.rescued else ""
             self.status.append(f"{h.role.upper():6s} fingers {' '.join(f'{v:.1f}' for v in h.ext)}  "
-                               f"t-mid {h.pinch[0]:.2f}  t-ring {h.pinch[1]:.2f}  "
+                               f"t-mid {h.pinch[0]:.2f} (2d {thumb_tip_2d(h, MIDDLE_TIP):.2f})  "
+                               f"t-ring {h.pinch[1]:.2f} (2d {thumb_tip_2d(h, RING_TIP):.2f})  "
                                f"t-idx {_num(h.side['x1'])} (2d {thumb_index_2d(h):.2f})  "
                                f"t-ring-base {_num(h.side['x2'])}  "
                                f"size {self._k(h):.2f}{extra}  {state}")
@@ -3289,7 +3308,8 @@ class GestureRecorder(logging.Handler):
     def numbers(h: Hand) -> str:
         """The thumb distances of one frame, written under it (3D / picture for the index)."""
         try:
-            return (f"idx {h.side['x1']:.2f}/{thumb_index_2d(h):.2f} mid {h.pinch[0]:.2f} ring {h.pinch[1]:.2f}"
+            return (f"idx {h.side['x1']:.2f}/{thumb_index_2d(h):.2f} mid {h.pinch[0]:.2f}/"
+                    f"{thumb_tip_2d(h, MIDDLE_TIP):.2f} ring {h.pinch[1]:.2f}/{thumb_tip_2d(h, RING_TIP):.2f}"
                     + (" unsure" if h.unsure else ""))
         except Exception:
             return ""

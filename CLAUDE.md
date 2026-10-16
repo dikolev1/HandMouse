@@ -264,10 +264,11 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
 - **Play / pause gesture removed (2026-10-11)** at the user's request (thumb out + double finger fold). The
   version that still had it is in `hand_mouse_previous.py` from that date.
 
-- **Pinch missed with a bent middle finger.** When the middle finger bends toward the camera (palm facing it),
-  MediaPipe reads the finger as straight and `t-mid` stays at about 0.43 although the thumb touches it. This is a
-  landmark-model limitation. The user was asked to save snapshots (S) of it; analyse them before changing
-  thresholds.
+- **Pinch missed with a bent middle finger: mostly fixed 2026-10-16.** The depth guess read t-mid 0.39 while the
+  thumb was visibly on the middle tip (~0.14 apart in the picture). `click_distances`: while 3D < `TOUCH_OFF`, a
+  picture distance < `CLICK_2D` 0.20 counts (`tests/test_click_2d.py`). Live numbers / debug pictures now show
+  the 2D middle and ring distances too: check them for false clicks (a thumb resting near the middle tip in
+  the picture) before loosening `CLICK_2D`.
 - **Dim-light blur.** Possibly try a shorter camera exposure (`CAP_PROP_EXPOSURE`). At open, MSMF reports
   auto exposure 0.0, exposure -5. This was never tested, so verify on the laptop and revert if the picture gets
   too dark.
