@@ -267,8 +267,11 @@ INDEX_HOLD_2D = 0.30        # a held index pinch also stays held while the thumb
                             # reads 0.5-0.65 in 3D (= apart) while the "OK" sign is clearly held and the hand
                             # moves to pick a window (debug pictures 2026-10-14)
 KEY_FIST_HOLD = 0.2         # the fist acts once it has been closed this long (s), without opening it
-KEY_THUMB_MIN = 0.15        # the thumbs-up must be shown this long (s) before tucking the thumb counts (so a
-                            # thumb flicking out while a fist opens or closes does nothing)
+KEY_THUMB_MIN = 0.3         # the thumbs-up must be shown this long (s) before tucking the thumb or moving it counts
+THUMB_REAL_OUT = 0.5        # ...and the thumb must stick out at least this far at some point (thumb_out; a real
+                            # thumbs-up reads >= 0.5, a fist <= 0.13). A relaxed resting hand's thumb wobbling out
+                            # past 0.3 and back gave play / pause by itself (2026-10-17)
+PLAYPAUSE_REPEAT = 1.5      # at least this long (s) between two play / pause
 TRACK_STEP = 0.12           # thumbs-up moved this far left / right (fraction of the picture width) = one track.
                             # Counted only after the thumbs-up was steady KEY_THUMB_MIN; one direction per thumbs-up
 TRACK_REPEAT = 0.4          # at least this long (s) between two track skips
@@ -1374,6 +1377,7 @@ class SecondHandKeys:
             if keys is not None:
                 self.actions[name] = (keys, key_label(text))
         self.last_text, self.last_time, self.fresh = "", -1e9, False
+        self.last_playpause = -1e9
         self.pending = None             # (gesture, time, wait): a single tap waiting to see whether a second comes
         self.switcher = False           # Alt is held down: the window switcher is open
         self._clear()
@@ -1388,6 +1392,7 @@ class SecondHandKeys:
         self.thumb_real = -1e9          # last time a thumbs-up held at least KEY_THUMB_MIN was seen
         self.thumb_dir, self.thumb_skip = 0, -1e9   # track-skip direction of this thumbs-up, last skip time
         self.thumb_sx = None            # smoothed thumbs-up position (x)
+        self.thumb_peak = 0.0           # how far the thumb stuck out during this thumbs-up (thumb_out)
 
     def reset(self):
         """Let go of everything (hand lost, gestures off, pause, quit). A waiting single tap still acts."""
@@ -1538,18 +1543,20 @@ class SecondHandKeys:
         """Thumbs-up, then the thumb tucked into the fist -> play / pause. A thumbs-up moved left / right ->
         previous / next track, one per TRACK_STEP (tucking the thumb afterwards does nothing then)."""
         on = self.thumb_since is not None
+        out = thumb_out(h)
         pose = (max(h.ext) < (FIST_KEEP if on else FIST_CURL)
-                and thumb_out(h) > (VOLUME_THUMB_KEEP if on else VOLUME_THUMB_OUT))
+                and out > (VOLUME_THUMB_KEEP if on else VOLUME_THUMB_OUT))
         if pose:
             self.thumb_last = now
             x = h.center[0]
             if not on:
                 self.thumb_since, self.thumb_x, self.thumb_moved, self.thumb_dir = now, None, False, 0
-                self.thumb_sx = x
+                self.thumb_sx, self.thumb_peak = x, out
                 return
             self.thumb_sx = 0.5 * x + 0.5 * self.thumb_sx       # smoothed: a jittery hand doesn't skip
-            if now - self.thumb_since < KEY_THUMB_MIN:
-                return                          # still forming the thumbs-up: moving now doesn't count
+            self.thumb_peak = max(self.thumb_peak, out)
+            if now - self.thumb_since < KEY_THUMB_MIN or self.thumb_peak < THUMB_REAL_OUT:
+                return                          # not a real thumbs-up (yet): moving now doesn't count
             self.thumb_real = now
             if self.thumb_x is None:
                 self.thumb_x = self.thumb_sx    # the start point: where the thumbs-up became steady
@@ -1557,17 +1564,21 @@ class SecondHandKeys:
             step = TRACK_STEP * max(k, 0.8)
             dx = self.thumb_sx - self.thumb_x
             d = 1 if dx > 0 else -1
+            # one direction per thumbs-up, and moving back doesn't reset the start point: a hand wobbling back and
+            # forth skips at most once
             if abs(dx) >= step and d != -self.thumb_dir and now - self.thumb_skip >= TRACK_REPEAT:
                 self.thumb_x += d * step        # the start point follows: each further step is one more track
                 self.thumb_moved, self.thumb_dir, self.thumb_skip = True, d, now
                 self._do("thumbs-up right" if d > 0 else "thumbs-up left")
-            if self.thumb_dir and dx * self.thumb_dir < 0:
-                self.thumb_x = self.thumb_sx    # moving back after a skip: no skip the other way, start again here
         elif on:
             if (is_fist(h, keep=True) and not self.thumb_moved
-                    and self.thumb_last - self.thumb_since >= KEY_THUMB_MIN):
-                self.thumb_since = None
-                self._do("thumbs-up, thumb in")
+                    and self.thumb_last - self.thumb_since >= KEY_THUMB_MIN and self.thumb_peak >= THUMB_REAL_OUT):
+                held, self.thumb_since = self.thumb_last - self.thumb_since, None
+                if now - self.last_playpause >= PLAYPAUSE_REPEAT:
+                    self.last_playpause = now
+                    log.info("second hand thumbs-up %.2f s, thumb out up to %.2f, hand size %.2f",
+                             held, self.thumb_peak, k)
+                    self._do("thumbs-up, thumb in")
             elif now - self.thumb_last > 0.3:
                 self.thumb_since = None         # thumbs-up gone without tucking the thumb (hand opened)
 
@@ -3366,7 +3377,8 @@ class GestureRecorder(logging.Handler):
         """The thumb distances of one frame, written under it (3D / picture for the index)."""
         try:
             return (f"idx {h.side['x1']:.2f}/{thumb_index_2d(h):.2f} mid {h.pinch[0]:.2f}/"
-                    f"{thumb_tip_2d(h, MIDDLE_TIP):.2f} ring {h.pinch[1]:.2f}/{thumb_tip_2d(h, RING_TIP):.2f}"
+                    f"{thumb_tip_2d(h, MIDDLE_TIP):.2f} ring {h.pinch[1]:.2f}/{thumb_tip_2d(h, RING_TIP):.2f} "
+                    f"thumb {thumb_out(h):.2f}"
                     + (" unsure" if h.unsure else ""))
         except Exception:
             return ""
