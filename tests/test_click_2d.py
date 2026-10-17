@@ -19,16 +19,28 @@ def on_tip(tip, d3, d2_off=0.0, px=0.7):
     return B.with_thumb(h, (x, y, z))
 
 
+def turned(h, squeeze=0.35):
+    """The same hand turned sideways: narrow in the picture (the palm no longer faces the camera)."""
+    cx = h.img[0][0]
+    return hm.Hand(h.label, [(cx + (x - cx) * squeeze, y) for x, y in h.img], h.world)
+
+
 open_ = lambda t: V.make(px=0.7)
 btn = lambda m: [x for x in m.events if x[0] in ("left", "right", "middle")]
 for name, h, want in (("thumb on middle tip, depth reads 0.39 (screenshot)", on_tip(12, 0.39), "left"),
                       ("thumb on middle tip, depth reads 0.44", on_tip(12, 0.44), "left"),
                       ("thumb on ring tip, depth reads 0.40", on_tip(16, 0.40), "right"),
-                      ("thumb behind the middle tip, depth 0.55 (hand turned)", on_tip(12, 0.55), None),
-                      ("depth 0.39 but 2 cm beside the tip in the picture", on_tip(12, 0.39, 0.02), None)):
+                      ("thumb on middle tip, depth reads 0.76 (screenshot 2026-10-17)", on_tip(12, 0.76), "left"),
+                      ("thumb on middle tip, depth reads 1.09 (log 14:56:32)", on_tip(12, 1.09), "left"),
+                      ("hand turned sideways, thumb only looks on the middle tip, depth 0.76",
+                       turned(on_tip(12, 0.76)), None),
+                      ("hand turned sideways, depth 0.39 (small misread still helped)", turned(on_tip(12, 0.39)), "left"),
+                      ("depth 0.39 but 2 cm beside the tip in the picture", on_tip(12, 0.39, 0.02), None),
+                      ("depth 0.76 and 1.5 cm beside the tip in the picture", on_tip(12, 0.76, 0.015), None)):
     m, e = B.run(N(12, open_) + N(6, lambda t, h=h: h) + N(10, open_))
     exp = [(want, "down"), (want, "up")] if want else []
-    check(f"{name} (3D {h.pinch[0]:.2f}/{h.pinch[1]:.2f}, 2D {hm.thumb_tip_2d(h, 12):.2f}/{hm.thumb_tip_2d(h, 16):.2f})"
+    check(f"{name} (3D {h.pinch[0]:.2f}/{h.pinch[1]:.2f}, 2D {hm.thumb_tip_2d(h, 12):.2f}/{hm.thumb_tip_2d(h, 16):.2f}, "
+          f"facing {h.facing:.2f})"
           f" -> {want or 'no click'}", btn(m) == exp, btn(m))
 rnd = random.Random(21)
 m, e = B.run([lambda t: V.make(px=0.7, jitter=0.004, rnd=rnd)] * 300)

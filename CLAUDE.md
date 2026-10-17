@@ -273,7 +273,10 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
   thumb was visibly on the middle tip (~0.14 apart in the picture). `click_distances`: while 3D < `TOUCH_OFF`, a
   picture distance < `CLICK_2D` 0.20 counts (`tests/test_click_2d.py`). Live numbers / debug pictures now show
   the 2D middle and ring distances too: check them for false clicks (a thumb resting near the middle tip in
-  the picture) before loosening `CLICK_2D`.
+  the picture) before loosening `CLICK_2D`. 2026-10-17: the depth guess read 0.60-1.09 with the thumb on the middle tip
+  (screenshot: t-mid 0.76, 2d 0.16), so a picture distance < `CLICK_2D_FAR` 0.18 now counts whatever 3D says,
+  but only with the palm facing the camera (`facing >= SIDE_FACING`): turned sideways, a thumb behind the
+  finger looks like touching. The log's 2D-near / 3D-far MAIN samples were all real clicks or fists.
 - **Dim-light blur.** Possibly try a shorter camera exposure (`CAP_PROP_EXPOSURE`). At open, MSMF reports
   auto exposure 0.0, exposure -5. This was never tested, so verify on the laptop and revert if the picture gets
   too dark.

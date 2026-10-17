@@ -144,6 +144,8 @@ TOUCH_OFF = 0.46            # farther than this = fingers released (must be > TO
 CLICK_2D = 0.20             # the depth guess often reads a thumb on a bent middle finger as 0.35-0.45 apart (the
                             # camera picture shows it touching, ~0.14): while 3D is under TOUCH_OFF, a thumb this
                             # close in the picture (x palm length in the picture) counts as touching
+CLICK_2D_FAR = 0.18         # ...and with the palm facing the camera (SIDE_FACING) even when 3D says far apart: the
+                            # depth guess read 0.6-1.09 while the thumb was on the middle tip (log 2026-10-17 14:56)
 BOTH_RATIO = 1.4            # 3-finger (middle click) when the two distances differ by less than this
                             # factor. Right click read as middle? lower it. Middle read as right/left? raise it.
 
@@ -1322,12 +1324,15 @@ def thumb_index_2d(h: Hand) -> float:
 
 def click_distances(h: Hand) -> tuple[float, float]:
     """(thumb-middle, thumb-ring) for the clicks: the 3D distance, or the picture distance when that is clearly
-    touching (< CLICK_2D) and 3D is only a little apart (< TOUCH_OFF). When 3D says clearly apart the picture is
-    ignored (a thumb behind the finger, hand turned sideways)."""
+    touching: < CLICK_2D while 3D is only a little apart (< TOUCH_OFF), or < CLICK_2D_FAR whatever 3D says, but
+    then only with the palm facing the camera (turned sideways, a thumb behind the finger looks like touching)."""
     out = []
     for d3, tip in zip(h.pinch, (MIDDLE_TIP, RING_TIP)):
-        d2 = thumb_tip_2d(h, tip) if d3 < TOUCH_OFF else math.inf
-        out.append(min(d3, d2) if d2 < CLICK_2D else d3)
+        d2 = thumb_tip_2d(h, tip)
+        if (d3 < TOUCH_OFF and d2 < CLICK_2D) or (d2 < CLICK_2D_FAR and h.facing >= SIDE_FACING):
+            out.append(min(d3, d2))
+        else:
+            out.append(d3)
     return out[0], out[1]
 
 
