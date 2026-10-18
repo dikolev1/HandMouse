@@ -1,0 +1,149 @@
+HAND MOUSE - HANDOVER FOR THE NEXT DEVELOPER AGENT
+Written 2026-10-18 by the previous agent (Claude Code). Read this first, then CLAUDE.md.
+
+======================================================================
+1. WHAT THIS IS AND WHERE THINGS ARE
+======================================================================
+- Hand Mouse: a single-file Python app (hand_mouse.py, ~4,000 lines) that turns the laptop webcam into a mouse and
+  keyboard on Windows 11 (MediaPipe hand landmarks -> cursor, clicks, scroll, volume, left-hand shortcuts).
+- App folder (the live, running copy):  C:\Users\glava\Claude\HandMouse
+  This folder IS the git repo. The desktop shortcut runs hand_mouse.py from here.
+- GitHub: https://github.com/dikolev1/HandMouse  (public; gh CLI is logged in as dikolev1)
+- Branches:
+    develop = current work. The app folder is checked out on develop. Everything below is on develop.
+    main    = older; 11 commits behind develop (last: "Debug pictures: keep the newest 500").
+  The user decides when develop goes to main ("push to main"). Do it as a fast-forward WITHOUT switching branches:
+      git push origin develop:main
+  (Never "git checkout main" in the app folder: it rewrites hand_mouse.py, and the running app restarts with the
+  old version - see section 3.)
+- Other docs, keep them in sync with every gesture change:
+    CLAUDE.md   - detailed technical notes: architecture, every gesture with its settings, lessons learned,
+                  testing, diagnostics. READ IT FULLY before changing anything.
+    README.md   - the user-facing guide.
+    HELP_HTML   - inside hand_mouse.py; becomes gestures.html (the tray's "Gestures help").
+    module docstring at the top of hand_mouse.py - short gesture list.
+- C:\Users\glava\Github\Gesture_mouse is an empty folder (where the previous sessions were opened). Not used.
+
+======================================================================
+2. THE USER
+======================================================================
+- The only user. Tests by using the app live and reports problems in short messages, often with a screenshot of
+  the "Camera & log window" (it shows live numbers per hand and the event log). English is not their first
+  language: read requests generously, answer in plain, simple words, say what changed, how to use it, and what
+  still may not work.
+- Usual flow they expect: fix -> deploy to the running app -> commit -> push to develop -> they test -> they say
+  "push to main" when happy.
+- They have the debug mode ON right now (hand_mouse_state.json: "debug_pictures": true). Remind them to turn it off
+  in the tray menu when debugging is done.
+
+======================================================================
+3. GOLDEN RULE: THE APP RESTARTS ITSELF WHEN hand_mouse.py IS SAVED
+======================================================================
+AUTO_RESTART_ON_EDIT = True: about 1 s after hand_mouse.py changes, the running app restarts itself. A syntax error
+or a crash at import kills it and the user loses their mouse. So NEVER edit hand_mouse.py in place. Workflow used
+for every change so far:
+  1. Copy hand_mouse.py, tests\, README.md, CLAUDE.md to a scratch folder. Check first that the scratch copy equals
+     the live files (diff -q), the user sometimes changes things.
+  2. Edit there. Lint:  <python> -m pyflakes hand_mouse.py   (pyflakes is installed)
+  3. Reproduce the problem in a test (see section 5), fix, run the whole suite:  <python> tests\run_tests.py
+     (23 test files, a few minutes; all must pass). Also run the new checks against the CURRENT live version to
+     show "before: fails, after: passes".
+  4. cp hand_mouse.py hand_mouse_previous.py   (backup of the version before the change, by convention)
+     Copy docs/tests in, then copy hand_mouse.py in LAST.
+  5. Watch hand_mouse.log for: "hand_mouse.py changed, restarting" -> "started (...)" -> "camera ready in N s",
+     and no ERROR / fatal. (Traceback lines have no timestamp; don't mistake old ones for new.)
+  6. git add -A; commit (message: what was wrong, from which evidence, what changed, tests); git push origin develop.
+<python> = C:\Users\glava\AppData\Local\Programs\Python\Python312\python.exe  (also in python_path.txt)
+
+======================================================================
+4. CURRENT GESTURES (short; details and settings in CLAUDE.md / README.md)
+======================================================================
+Right hand (main hand):
+  cursor = index fingertip; left / right click = thumb on middle / ring tip; middle click = both; drag = hold;
+  double-click = two pinches; button 4 = thumb on index tip ("OK"); button 5 = thumb across the palm onto the
+  palm area under the ring / little finger; volume = thumbs-up held; scroll = fist moved up/down AND left/right
+  (one axis at a time); two fists 1 s = gestures off/on; left hand alone + fist twice = left becomes main hand.
+Left hand (second hand) keyboard shortcuts, table SECOND_KEYS (pinches act when the thumb lets go):
+  index tip = Alt+Tab (held 0.5 s: switcher stays open, move hand to pick; stops at first/last window)
+  middle = Ctrl+C, ring = Ctrl+V, little-finger base (button-5 area) = Ctrl+Z (twice = Ctrl+Y)
+  middle+ring = Print Screen, index+middle = Win+H voice typing (twice = on-screen keyboard)
+  fist (held 0.2 s, only when it is the only fist in view) = Esc
+  thumbs-up then thumb tucked in = Play/Pause; thumbs-up moved right/left = next/previous track
+Tray: Camera & log window, Gestures on, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size,
+"Debug: save a picture of every gesture", Close.
+
+======================================================================
+5. HOW TO DIAGNOSE (the method that worked: measure, then change)
+======================================================================
+- hand_mouse.log (rotates at 2 MB, plus .1/.2):
+    * a "diag" line every second with fps, ms/frame and each hand's numbers: fingers (extension of index..pinky,
+      ~1.0 folded, ~1.8 straight), t-mid / t-ring / t-idx = thumb-to-fingertip distance in 3D with "(2d ...)" =
+      the same in the picture, t-ring-base = button-5 area distance, size = hand size vs normal.
+    * every gesture event; every left-hand touch: "second hand touch 0.19 s, 7 frames: thumb to index A middle B
+      ring C (median, picture a b c) ... -> decision (too short / cancelled: ...)".
+    * every play/pause: "second hand thumbs-up X s, thumb out up to Y, hand size Z".
+- debug\ folder (when debug mode is on): one JPEG per recognised gesture = 8 camera frames from the last 1.2 s
+  with the hands drawn and per-frame numbers under each frame ("idx 3D/2D mid 3D/2D ring 3D/2D thumb <thumb_out>").
+  File names start with date_time, matching the log. Newest 500 kept. You can open them with the Read tool.
+  Re-running MediaPipe on these frames does NOT work (drawn skeleton, small size) - read the printed numbers.
+- When the user says "X doesn't work" or "X fires by itself": find the log lines / debug pictures at that time,
+  read the numbers, then reproduce with synthetic hands in a test.
+- Tests use synthetic hands (tests\test_core.py: make(px, py, pinch, fist, fold, label, jitter)), FakeMouse records
+  events (buttons, wheel, hwheel, keys, osk). To replay real readings, override the cached properties, e.g.
+  h.__dict__["pinch"] = (0.40, 0.58); h.__dict__["side"] = {"x1": 0.35, "x2": math.inf}; h.__dict__["ext"] = [...]
+  Other helpers: tests\test_second_keys.py (left(), both(), thumbs(), run_w(), run_small()),
+  tests\test_buttons_4_5.py (with_thumb()).
+- Watch out when writing tests: a fake hand that jumps more than MATCH_DISTANCE (0.25) in one frame becomes a NEW
+  hand (new track) - move hands gradually. Fake-hand distances are not real-hand distances (e.g. the fake middle
+  pinch reads index 0.23 / middle 0.16).
+
+======================================================================
+6. THINGS LEARNED IN THE LAST SESSIONS (more in CLAUDE.md "Lessons learned")
+======================================================================
+- MediaPipe's 3D depth guess is often far off for thumb-to-fingertip distances (left "OK" sign read 0.5-0.65
+  while held; right thumb on middle tip read 0.6-1.09). The picture (2D) distance was right every time. Several
+  rules now use 2D as a helper: INDEX_HOLD_2D / INDEX_START_2D (left Alt+Tab pinch), CLICK_2D and CLICK_2D_FAR
+  (right clicks; the far one only with the palm facing the camera, facing >= SIDE_FACING), and the left-hand
+  finger choice uses per-frame min(3D, 2D).
+- The frame rate went from ~14 to ~27 fps (camera window closed; 9-10 fps with it open). Rules counted in frames
+  changed meaning: clicks now need 2 frames AND CLICK_DELAY (0.08 s).
+- Relaxed / resting hands produce gestures by themselves (fingers read ~1.3, thumb wobbles). Guards added: fully
+  in view, real thumbs-up (thumb_out >= 0.5, held 0.3 s), repeat limits, one direction per thumbs-up.
+- A hand coming into view from the picture edge is misread: left-hand touches can't start then (fully_in_view).
+
+======================================================================
+7. OPEN ISSUES / NEXT STEPS (most important first)
+======================================================================
+a) Left hand: Print Screen (thumb on middle AND ring) is read as Ctrl+C (middle only).
+   Evidence (user's screenshot 2026-10-17): touch medians middle 0.14, ring 0.23 (picture 0.16 / 0.24) and
+   middle 0.14, ring 0.30. Both clearly touching, but classify_tips() only picks the pair when the two distances
+   are within BOTH_RATIO 1.4 (0.23/0.14 = 1.6). Real Ctrl+C touches in the log had ring 0.46-0.62.
+   Idea: for the left hand, call it a pair when both are clearly touching (e.g. both < ~0.3) and the ratio is
+   < ~2.0. FIRST check every logged "second hand touch ... -> middle / ring / middle+ring" line (both 3D and
+   picture medians) so real Ctrl+C / Ctrl+V don't become Print Screen. That analysis was started and interrupted.
+b) THUMB_REAL_OUT = 0.5 for play/pause and track skip comes from real-video measurements in CLAUDE.md, not from
+   this user's hand. If the user says play/pause / next track stopped working, read "thumb out up to Y" log lines
+   and the "thumb" numbers in debug pictures and set it from their values (keep it above relaxed-thumb values;
+   the false triggers came from a resting hand).
+c) Right-hand click false positives: CLICK_2D_FAR (0.18) trusts the picture even when 3D says far apart (palm
+   facing camera only). In the log all such samples were real clicks or fists, but watch for clicks the user did
+   not make (debug pictures: mid 3D/2D numbers).
+d) A middle click made within 0.9 s after a left click starts as the double-click repeat (left) and is then
+   upgraded to middle - a left click happens first. Rare now that the first misread is fixed.
+e) Volume: when no audio output device exists, pycaw raises "Element not found" and the log gets an ERROR with
+   a traceback (seen 2026-10-14 15:30). The app keeps running; could be handled more quietly.
+f) The public repo contains hand_finder.onnx (HaGRID / Ultralytics YOLO export: free for non-commercial use).
+   The user was told; a licence note in the README was offered but not added.
+g) Ideas not done: shorter double-tap wait for Ctrl+Z (KEY_DOUBLE_WINDOW 0.45 s), shorter KEY_THUMB_MIN if the
+   user finds play/pause slow.
+
+======================================================================
+8. ENVIRONMENT NOTES
+======================================================================
+- Windows 11, Python 3.12 (path above), mediapipe 0.10.x, opencv 5, onnxruntime, pystray, pycaw, comtypes,
+  pyflakes. Camera: MSMF 1280x720 ~30 fps.
+- The app runs in the background (pythonw). Single instance (named mutex). Log: hand_mouse.log in this folder.
+- Files NOT in git (.gitignore): logs, hand_mouse_state.json, snapshots\, debug\, hand_mouse_previous.py,
+  gestures.html, YOLOv10n_hands.pt, python_path.txt, setup_log.txt.
+- Git commits end with a Co-Authored-By line for the agent (see recent commits for the format). The user's git
+  identity is dikolev1.
