@@ -5,6 +5,9 @@ Written 2026-10-18 by the previous agent (Claude Code). Read this first, then CL
 the on-screen keyboard are addressed in code with synthetic regression tests (test_phone_reports.py).
 See CLAUDE.md's 2026-11-06 entry for the rules and evidence. Webcam verification remains separate from tests.
 Enter gesture is explicitly deferred by the user. The older issue list below is historical context.
+First live trial of defe35c was NOT reliable: false Alt+Tab persisted on open hands. Follow-up removes
+the legacy 3D-only pinch start; labelled copy worked, screenshot worked once but open phases fired Alt+Tab.
+See CLAUDE.md for times and regression evidence; don't treat synthetic passes as live confirmation.
 
 ======================================================================
 1. WHAT THIS IS AND WHERE THINGS ARE

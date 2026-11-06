@@ -302,7 +302,7 @@ def ok_3d(d3, d2_off=0.0, px=0.3):
     z = t[2] - max((d3 * L) ** 2 - d2_off ** 2, 0.0) ** 0.5
     return with_thumb(h, (x, y, z))
 for d3, d2_off, want, why in ((0.37, 0.0, True, "held OK sign read 0.37 in 3D"),
-                              (0.36, 0.024, True, "screenshot 2026-10-14: 3D 0.35, 2D 0.44"),
+                              (0.36, 0.024, False, "3D close but picture apart: no visible contact (live false Alt+Tab)"),
                               (0.52, 0.0, True, "3D 0.52 but on the index tip in the picture"),
                               (0.70, 0.0, False, "thumb behind the index (hand edge-on): 3D 0.70"),
                               (0.55, 0.06, False, "3D 0.55 and 2D 0.7: open-ish hand")):

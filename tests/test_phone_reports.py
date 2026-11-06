@@ -56,8 +56,22 @@ class PhoneReports(unittest.TestCase):
                 self.feed(T.left, 16)
                 self.assertEqual(self.events(), [("keys", (T.CTRL, ord(key)))])
 
+    def test_open_hand_depth_fallback_does_not_trigger_alt_tab(self):
+        # Live false Alt+Tab, 2026-11-06 14:40:04-06 and 14:40:27.
+        for d3, d2 in (((.37, .66, .95), (.41, .70, 1.17)),
+                       ((.39, .86, 1.12), (.54, .96, 1.27)),
+                       ((.40, .96, 1.16), (.54, 1.06, 1.33)),
+                       ((.38, .73, .82), (.51, .83, .94)),
+                       ((.42, .73, .80), (.54, .83, .95))):
+            with self.subTest(d3=d3):
+                self.mouse.events.clear()
+                self.feed(lambda: self.sample(d3, d2), 32)
+                self.feed(T.left, 16)
+                self.assertEqual(self.events(), [])
+
     def test_screenshot_unequal_contacts_from_log(self):
-        for mid, ring in ((.14, .23), (.08, .14), (.11, .18)):
+        for mid, ring in ((.14, .23), (.08, .14), (.11, .18),
+                          (.14, .33), (.17, .36), (.17, .28), (.23, .32), (.04, .14), (.21, .38)):
             with self.subTest(mid=mid, ring=ring):
                 self.mouse.events.clear()
                 self.feed(lambda: self.sample((.60, mid, ring), (.60, mid, ring), "middle+ring"))
@@ -77,6 +91,32 @@ class PhoneReports(unittest.TestCase):
         self.feed(pinch, 4)
         self.feed(T.left, 16)
         self.assertEqual(self.events(), [("osk",)])
+
+    def test_keyboard_live_pair_drift_and_natural_double_tap_gap(self):
+        # Labelled keyboard test 14:47:41: second tap's middle read .28, first read .26.
+        self.feed(lambda: self.sample((.19, .26, .65), (.19, .26, .65), "index+middle"), 4)
+        self.feed(T.left, 10)  # .625 s opening/reforming at a slow camera frame rate
+        self.feed(lambda: self.sample((.18, .28, .67), (.18, .28, .67), "index+middle"), 3)
+        self.feed(T.left, 20)
+        self.assertEqual(self.events(), [("osk",)])
+
+    def test_keyboard_live_first_pair_is_not_alt_tab(self):
+        for idx, mid in ((.19, .29), (.06, .32), (.12, .31)):
+            with self.subTest(index=idx, middle=mid):
+                self.mouse.events.clear()
+                pinch = lambda: self.sample((idx, mid, .65), (idx, mid, .69), "index+middle")
+                self.feed(pinch, 4)
+                self.feed(T.left, 5)
+                self.feed(pinch, 4)
+                self.feed(T.left, 20)
+                self.assertEqual(self.events(), [("osk",)])
+
+    def test_pending_keyboard_pair_does_not_take_a_clear_copy_pinch(self):
+        self.feed(lambda: self.sample((.19, .26, .65), (.19, .26, .65), "index+middle"), 4)
+        self.feed(T.left, 3)
+        self.feed(lambda: self.sample((.27, .15, .50), (.27, .15, .50)), 4)
+        self.feed(T.left, 20)
+        self.assertEqual(self.events(), [("keys", (T.WIN, ord("H"))), ("keys", (T.CTRL, ord("C")))])
 
     def test_tuck_between_thumb_hysteresis_thresholds(self):
         self.feed(T.thumbs, 8)

@@ -75,6 +75,9 @@ The shortcuts are set in `SECOND_KEYS` at the top of `hand_mouse.py` (e.g. `"mid
 Keep the hand fully inside the camera picture. For a two-finger shortcut, touch both fingertips clearly;
 for copy / paste, keep the neighbouring fingertip away from the thumb. Pinches take priority over track
 gestures. Open the hand between separate thumbs-up gestures to reset the movement start point.
+Pinches now require visible fingertip contact; moving the thumb near an open index finger does nothing.
+The keyboard's double-pinch allows three quarters of a second between taps (voice typing waits that long
+to check for the second tap). Undo/redo keeps its shorter double-tap timing.
 If the on-screen keyboard cannot launch, the camera panel shows "on-screen keyboard: failed" instead of
 claiming it opened.
 

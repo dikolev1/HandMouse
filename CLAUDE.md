@@ -82,7 +82,7 @@ from the **median** thumb-to-tip distances over the touch (`classify_tips`), and
 `KEY_RELEASE_DELAY` 0.18 s apart (`ALT_TAB_RELEASE` 0.3 s with the switcher open), or at once when a short pinch
 is clearly wide open (so "twice" taps don't merge); 2 fist frames in a row cancel it. Every touch is logged
 (`second hand touch ... -> name`, with the medians) when `DIAGNOSTICS` is on. A gesture with a `"... twice"` entry waits
-`KEY_DOUBLE_WINDOW` 0.45 s before its single action.
+`KEY_DOUBLE_WINDOW` 0.45 s before its single action (keyboard / voice pair: `KEYBOARD_DOUBLE_WINDOW` 0.75 s).
 
 | Gesture (second hand) | Default | Notes |
 |---|---|---|
@@ -204,14 +204,28 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
 - **Second-hand recognition fixes (2026-11-06, phone reports).** Tests replay November 5 screenshot distances
   (middle/ring .14/.23, .08/.14, .11/.18) and keyboard-pair distances (.15/.19 in the picture). Both tips below
   0.25 can be a pair even when the old ratio 1.4 fails (up to 2.5). `second_distances` uses picture distances
-  consistently when a clear picture contact exists (< 0.30), retaining the per-tip 3D guard (< 0.60); otherwise
-  it falls back to 3D. Starting and deciding a pinch use the same distances, rather than per-tip minima that
+  consistently, retaining the per-tip 3D guard (< 0.60). A pinch must start with picture distance < 0.30;
+  there is no 3D-only start fallback. Starting and deciding a pinch use the same distances, rather than per-tip minima that
   let a falsely close index in depth steal copy/paste or screenshot. A clear index contact with a protruding
   thumb is allowed even when all four fingers read folded. Pinches and fingertip contacts block media gestures;
   opening the hand or leaving the picture ends a media session immediately. A tuck at thumb_out 0.18-0.30 now
   ends the thumbs-up and can trigger play/pause (the old keep threshold hid it). OSK closes only when visible;
   a hidden OSK window is reopened. Failed shortcut output is displayed as failed. Synthetic regressions live
-  in `tests/test_phone_reports.py`; real webcam verification is still needed for the user's exact poses.
+  in `tests/test_phone_reports.py`. First live trial failed: repeated Alt+Tab while open (3D index .37-.42,
+  picture .41-.54). The October 3D-only easier-index start was the cause; it is removed, including the
+  corresponding historical test expectation. Labelled live copy succeeded three times at 14:43:50-56;
+  screenshot succeeded once at 14:44:47 (.15/.24 picture) but the following open-hand phases triggered
+  Alt+Tab at 14:44:53-58. Those exact false readings are now regressions. Repeat live verification after deploy.
+  Keyboard opened at 14:47:36 (confirmed by the user), but other double pinches split into Win+H and Alt+Tab.
+  Keyboard double-tap now waits 0.75 s. Further live keyboard taps at 14:55:33-51 measured index .19/.06/.12
+  and middle .29/.32/.31; those still became Alt+Tab. For an index-closest pair with index < 0.30,
+  middle < `VOICE_MIDDLE_ON` 0.34 now counts as the pair, even if the first tap is uneven. A clear
+  middle-closest copy remains separate. Both first and second taps use the same classifier.
+  Second live trial: no Alt+Tab/track outputs after restart through 14:53:05, but some screenshots became
+  copy: picture middle/ring .14/.33, .17/.36, .17/.28 and .04/.14. Debug strips show both fingers folded
+  onto the thumb. Screenshot now accepts both below 0.25 without a ratio test, or middle < 0.25 with
+  ring < `SCREENSHOT_RING_ON` 0.40 and ratio < 2.5, only when middle is closer and index >= 0.30. This asymmetric extension
+  preserves ring-only paste (e.g. middle .26, ring .16) and labelled copy (ring .65+).
 - **Left copy / paste read as Win+H / Print Screen (2026-10-16).** Debug picture: thumb on the middle tip, 3D
   index 0.35 < middle 0.40 (so "index+middle"), picture middle 0.14 / index 0.45. Initially fixed with per-frame
   min(3D, picture); superseded by `second_distances` on 2026-11-06 (see above). The touch

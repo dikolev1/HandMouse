@@ -27,7 +27,7 @@ Keyboard shortcuts with the other hand (your LEFT hand); pinches act when the th
   Ctrl+C / Ctrl+V thumb on middle / ring fingertip
   Ctrl+Z          thumb across the palm on the base of the little finger; twice quickly = Ctrl+Y
   Print Screen    thumb on middle AND ring fingertips
-  voice typing    thumb on index AND middle fingertips (Win+H); twice quickly = on-screen keyboard on / off
+  voice typing    thumb on index AND middle fingertips (Win+H); twice within 0.75 s = keyboard on / off
   Esc             make a fist (the only fist in view)
   play / pause    thumbs-up, then tuck the thumb into the fist
   next / previous thumbs-up moved right / left (one track per step; open the hand to start again)
@@ -251,17 +251,18 @@ SECOND_KEYS = {
     "thumbs-up left": "prevtrack",
 }
 KEY_DOUBLE_WINDOW = 0.45    # a second tap this soon (s) after letting go makes it "twice"
+KEYBOARD_DOUBLE_WINDOW = 0.75  # keyboard pair: allow time to open/reform two fingers at 10-16 camera fps
 KEY_RELEASE_DELAY = 0.18    # the thumb must be away this long (s) before a pinch counts as let go, so a few
                             # misread frames don't split one pinch into two
 SECOND_PAIR_ON = 0.25       # both tips clearly touching in the picture: accept unequal two-finger pinches
 SECOND_PAIR_RATIO = 2.5     # e.g. screenshot middle .08 / ring .14; ordinary single tips stay separate
+SCREENSHOT_RING_ON = 0.40   # user's labelled screenshot: middle .14-.23, ring .28-.38; copy ring was .65+
+VOICE_MIDDLE_ON = 0.34      # user's keyboard pair: index .06-.19, middle .29-.32; real index-only had middle .8+
 ALT_TAB_RELEASE = 0.30      # ...while the window switcher is open (moving the hand blurs it)
 ALT_TAB_HOLD = 0.5          # thumb held on the index fingertip this long (s) keeps the window switcher open
 ALT_TAB_STEP = 0.05         # move the hand this far (fraction of the picture width) for each next window
 ALT_TAB_STOP_AT_ENDS = True # the selection stops at the first / last window instead of wrapping around
-SECOND_INDEX_ON = 0.40      # the second hand's index pinch ("OK" sign) starts below this in 3D (the clicks use
-                            # TOUCH_ON 0.34): a held left "OK" reads 0.26-0.38, an open hand 0.45-0.8 (log 2026-10-14)
-INDEX_START_2D = 0.30       # ...or when the thumb is this close to the index tip in the picture while 3D is under
+INDEX_START_2D = 0.30       # a second-hand fingertip pinch must be this close in the picture; 3D must be under
 INDEX_START_3D_MAX = 0.60   # this (a thumb behind the index, hand edge-on, reads far in 3D). Held: 2D < 0.3 in 61
                             # of 66 samples; open: 2D > 0.6
 INDEX_HOLD_2D = 0.30        # a held index pinch also stays held while the thumb tip is this close to the index
@@ -1313,6 +1314,14 @@ def classify_tips(d: dict) -> str:
     (n1, d1), (n2, d2), _ = sorted(d.items(), key=lambda kv: kv[1])
     pair = "+".join(n for n in d if n in (n1, n2))
     ratio = d2 / max(d1, 1e-3)
+    if d["index"] >= INDEX_START_2D and (
+            max(d["middle"], d["ring"]) < SECOND_PAIR_ON
+            or (d["middle"] <= d["ring"] and d["middle"] < SECOND_PAIR_ON
+                and d["ring"] < SCREENSHOT_RING_ON
+                and d["ring"] / max(d["middle"], 1e-3) < SECOND_PAIR_RATIO)):
+        return "middle+ring"            # measured unequal screenshot; keep ring-only paste separate
+    if pair == "index+middle" and n1 == "index" and d1 < INDEX_START_2D and d["middle"] < VOICE_MIDDLE_ON:
+        return pair                     # measured keyboard pair; middle-only copy is still a single
     if pair in ("index+middle", "middle+ring") and (
             (d2 < TOUCH_OFF and ratio < BOTH_RATIO)
             or (d2 < SECOND_PAIR_ON and ratio < SECOND_PAIR_RATIO)):
@@ -1321,15 +1330,13 @@ def classify_tips(d: dict) -> str:
 
 
 def second_distances(h: Hand) -> dict:
-    """Use a clear picture contact consistently, instead of mixing each tip's best 2D/3D guess.
+    """Use picture contact consistently, instead of mixing each tip's best 2D/3D guess.
 
-    Mixing minima lets a falsely close index in depth steal a real middle/ring pinch. Keep the
-    depth guard for projected overlap and fall back to 3D when the picture shows no clear contact.
+    Mixing minima lets a falsely close index in depth steal a real middle/ring pinch. A 3D-only
+    fallback also fired Alt+Tab on the user's open hand. Retain the depth guard for projected overlap.
     """
     d, picture = tip_distances(h), tip_distances_2d(h)
-    if min(picture.values()) < INDEX_START_2D:
-        return {n: picture[n] if v < INDEX_START_3D_MAX else v for n, v in d.items()}
-    return d
+    return {n: picture[n] if v < INDEX_START_3D_MAX else v for n, v in d.items()}
 
 
 def thumb_tip_2d(h: Hand, tip: int) -> float:
@@ -1370,13 +1377,9 @@ def second_contact(h: Hand, held: str | None = None) -> str | None:
     if thumb_on_palm_base(h, held == "little base"):
         return "little base"
     d = second_distances(h)
-    if min(d.values()) >= (TOUCH_OFF if held else TOUCH_ON):
+    if min(d.values()) >= (TOUCH_OFF if held else INDEX_START_2D):
         if held == "index" and thumb_index_2d(h) < INDEX_HOLD_2D:
             return "index"              # depth misread while the "OK" sign is held: the picture decides
-        if held is None and d["index"] == min(d.values()) and (
-                tip_distances(h)["index"] < SECOND_INDEX_ON
-                or (tip_distances(h)["index"] < INDEX_START_3D_MAX and thumb_index_2d(h) < INDEX_START_2D)):
-            return classify_tips(d)     # the left "OK" sign reads further apart than a click: easier to start
         return None
     return classify_tips(d)
 
@@ -1520,7 +1523,8 @@ class SecondHandKeys:
         if waiting:
             self._do(waiting[0])
         if name + " twice" in self.actions:
-            self.pending = (name, now, KEY_DOUBLE_WINDOW)
+            wait = KEYBOARD_DOUBLE_WINDOW if name == "index+middle" else KEY_DOUBLE_WINDOW
+            self.pending = (name, now, wait)
         else:
             self._do(name)
 
@@ -2621,7 +2625,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Paste (Ctrl+V)</h2><p>Thumb on the <b>ring</b> fingertip.</p></div>
  <div class="card"><h2>Undo / redo (Ctrl+Z / Ctrl+Y)</h2><p>Palm to the camera, thumb across the palm on the <b>base of the little finger</b> (like button 5). Once = undo, <b>twice quickly</b> = redo.</p></div>
  <div class="card"><h2>Print Screen</h2><p>Thumb on the <b>middle and ring</b> fingertips together.</p></div>
- <div class="card"><h2>Voice typing / keyboard</h2><p>Thumb on the <b>index and middle</b> fingertips together: voice typing on / off (Win+H). <b>Twice quickly</b>: the on-screen keyboard opens / closes; type on it with the right hand.</p></div>
+ <div class="card"><h2>Voice typing / keyboard</h2><p>Thumb on the <b>index and middle</b> fingertips together: voice typing on / off (Win+H). <b>Twice within 0.75 seconds</b>: the on-screen keyboard opens / closes; type on it with the right hand. A single pinch waits to see whether a second follows.</p></div>
  <div class="card"><h2>Esc</h2><p>Make a <b>fist</b> (thumb tucked in): Esc comes once it has been closed a moment, no need to open it. Only when it is the only fist in view (two fists = gestures off / on). With only the left hand in view hold it about half a second (two quick fists would make the left hand the main hand instead).</p></div>
  <div class="card"><h2>Play / pause, tracks</h2><p>Hold a clear <b>thumbs-up</b> for about a third of a second, then tuck the thumb into the fist: play / pause. Thumbs-up moved <b>right</b>: next track, <b>left</b>: previous track (a longer move skips more). Open the hand to start a fresh gesture. Fingertip pinches do not skip tracks.</p></div>
 </div>
