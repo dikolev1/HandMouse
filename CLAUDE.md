@@ -76,7 +76,8 @@ hand does the same.
 
 **Second-hand keyboard shortcuts** (`SecondHandKeys`, map in `SECOND_KEYS`, tests in `test_second_keys.py`).
 `second_contact()` reads which tip(s) the thumb touches with the click logic (3D, `TOUCH_ON`/`TOUCH_OFF`,
-pairs by `BOTH_RATIO`) and the button-5 spot (`thumb_on_palm_base`, 2D). A pinch acts on **release**, decided
+pairs by `BOTH_RATIO`, or both below `SECOND_PAIR_ON` 0.25 with ratio < `SECOND_PAIR_RATIO` 2.5) and the
+button-5 spot (`thumb_on_palm_base`, 2D). A pinch acts on **release**, decided
 from the **median** thumb-to-tip distances over the touch (`classify_tips`), and needs 2 frames. It ends after
 `KEY_RELEASE_DELAY` 0.18 s apart (`ALT_TAB_RELEASE` 0.3 s with the switcher open), or at once when a short pinch
 is clearly wide open (so "twice" taps don't merge); 2 fist frames in a row cancel it. Every touch is logged
@@ -200,9 +201,20 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
   button is middle if the latest 2 frames say middle (`ClickTracker._choose`); a 2+ frame tap that ends before
   the delay still clicks on release; the late-ring upgrade also works on a double-click press
   (`tests/test_middle_click.py`). Timing rules in frames change meaning when the frame rate changes.
+- **Second-hand recognition fixes (2026-11-06, phone reports).** Tests replay November 5 screenshot distances
+  (middle/ring .14/.23, .08/.14, .11/.18) and keyboard-pair distances (.15/.19 in the picture). Both tips below
+  0.25 can be a pair even when the old ratio 1.4 fails (up to 2.5). `second_distances` uses picture distances
+  consistently when a clear picture contact exists (< 0.30), retaining the per-tip 3D guard (< 0.60); otherwise
+  it falls back to 3D. Starting and deciding a pinch use the same distances, rather than per-tip minima that
+  let a falsely close index in depth steal copy/paste or screenshot. A clear index contact with a protruding
+  thumb is allowed even when all four fingers read folded. Pinches and fingertip contacts block media gestures;
+  opening the hand or leaving the picture ends a media session immediately. A tuck at thumb_out 0.18-0.30 now
+  ends the thumbs-up and can trigger play/pause (the old keep threshold hid it). OSK closes only when visible;
+  a hidden OSK window is reopened. Failed shortcut output is displayed as failed. Synthetic regressions live
+  in `tests/test_phone_reports.py`; real webcam verification is still needed for the user's exact poses.
 - **Left copy / paste read as Win+H / Print Screen (2026-10-16).** Debug picture: thumb on the middle tip, 3D
-  index 0.35 < middle 0.40 (so "index+middle"), picture middle 0.14 / index 0.45. The touch's finger(s) are now
-  chosen from per-frame min(3D, picture) distances (picture ignored when 3D >= `INDEX_START_3D_MAX`); the touch
+  index 0.35 < middle 0.40 (so "index+middle"), picture middle 0.14 / index 0.45. Initially fixed with per-frame
+  min(3D, picture); superseded by `second_distances` on 2026-11-06 (see above). The touch
   log line shows both. And a left-hand touch can't start while the hand is cut off by the picture edge
   (`fully_in_view`): a hand coming up from the bottom was read as middle+ring.
 - **Toggles need a real release.** Two fists used to switch on and off forever, because one dropped frame looked

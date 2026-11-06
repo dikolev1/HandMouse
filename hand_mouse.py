@@ -30,7 +30,7 @@ Keyboard shortcuts with the other hand (your LEFT hand); pinches act when the th
   voice typing    thumb on index AND middle fingertips (Win+H); twice quickly = on-screen keyboard on / off
   Esc             make a fist (the only fist in view)
   play / pause    thumbs-up, then tuck the thumb into the fist
-  next / previous thumbs-up moved right / left (one track per step)
+  next / previous thumbs-up moved right / left (one track per step; open the hand to start again)
 
 Tray icon (next to the clock): left-click stops / resumes tracking; right-click for the menu
 (Camera & log window, Gestures on, Stop / Resume tracking, Gestures help, Start with Windows, Re-learn my hand size,
@@ -253,6 +253,8 @@ SECOND_KEYS = {
 KEY_DOUBLE_WINDOW = 0.45    # a second tap this soon (s) after letting go makes it "twice"
 KEY_RELEASE_DELAY = 0.18    # the thumb must be away this long (s) before a pinch counts as let go, so a few
                             # misread frames don't split one pinch into two
+SECOND_PAIR_ON = 0.25       # both tips clearly touching in the picture: accept unequal two-finger pinches
+SECOND_PAIR_RATIO = 2.5     # e.g. screenshot middle .08 / ring .14; ordinary single tips stay separate
 ALT_TAB_RELEASE = 0.30      # ...while the window switcher is open (moving the hand blurs it)
 ALT_TAB_HOLD = 0.5          # thumb held on the index fingertip this long (s) keeps the window switcher open
 ALT_TAB_STEP = 0.05         # move the hand this far (fraction of the picture width) for each next window
@@ -1306,13 +1308,28 @@ def fully_in_view(h: Hand, margin: float = 0.02) -> bool:
 
 
 def classify_tips(d: dict) -> str:
-    """Which fingertip(s) the thumb is on, from the three distances. Fingertips side by side sit close, so a
-    pair is told from a single tip by comparing the distances (like the middle click), not by fixed limits."""
+    """Which fingertip(s) the thumb is on. Compare distances, also accepting unequal pairs
+    when both tips are clearly touching (single-tip neighbours in the picture are further away)."""
     (n1, d1), (n2, d2), _ = sorted(d.items(), key=lambda kv: kv[1])
     pair = "+".join(n for n in d if n in (n1, n2))
-    if pair in ("index+middle", "middle+ring") and d2 < TOUCH_OFF and d2 / max(d1, 1e-3) < BOTH_RATIO:
+    ratio = d2 / max(d1, 1e-3)
+    if pair in ("index+middle", "middle+ring") and (
+            (d2 < TOUCH_OFF and ratio < BOTH_RATIO)
+            or (d2 < SECOND_PAIR_ON and ratio < SECOND_PAIR_RATIO)):
         return pair
     return n1
+
+
+def second_distances(h: Hand) -> dict:
+    """Use a clear picture contact consistently, instead of mixing each tip's best 2D/3D guess.
+
+    Mixing minima lets a falsely close index in depth steal a real middle/ring pinch. Keep the
+    depth guard for projected overlap and fall back to 3D when the picture shows no clear contact.
+    """
+    d, picture = tip_distances(h), tip_distances_2d(h)
+    if min(picture.values()) < INDEX_START_2D:
+        return {n: picture[n] if v < INDEX_START_3D_MAX else v for n, v in d.items()}
+    return d
 
 
 def thumb_tip_2d(h: Hand, tip: int) -> float:
@@ -1344,16 +1361,21 @@ def second_contact(h: Hand, held: str | None = None) -> str | None:
     "little base", or None. held = the touch going on already: looser limits, and bent fingers don't end it
     (the hand model often reads the pinching and the relaxed fingers as bent)."""
     if max(h.ext) < (FIST_CURL if held else SIDE_STRAIGHT):
+        # A real OK sign can be read as four folded fingers. A clear index contact AND
+        # protruding thumb distinguishes it from a tucked fist and a media thumbs-up.
+        if (thumb_out(h) >= THUMB_REAL_OUT and thumb_index_2d(h) < SECOND_PAIR_ON
+                and h.side["x1"] < INDEX_START_3D_MAX):
+            return "index"
         return None                     # no finger straight: a fist or a closing hand
     if thumb_on_palm_base(h, held == "little base"):
         return "little base"
-    d = tip_distances(h)
+    d = second_distances(h)
     if min(d.values()) >= (TOUCH_OFF if held else TOUCH_ON):
         if held == "index" and thumb_index_2d(h) < INDEX_HOLD_2D:
             return "index"              # depth misread while the "OK" sign is held: the picture decides
         if held is None and d["index"] == min(d.values()) and (
-                d["index"] < SECOND_INDEX_ON
-                or (d["index"] < INDEX_START_3D_MAX and thumb_index_2d(h) < INDEX_START_2D)):
+                tip_distances(h)["index"] < SECOND_INDEX_ON
+                or (tip_distances(h)["index"] < INDEX_START_3D_MAX and thumb_index_2d(h) < INDEX_START_2D)):
             return classify_tips(d)     # the left "OK" sign reads further apart than a click: easier to start
         return None
     return classify_tips(d)
@@ -1438,7 +1460,7 @@ class SecondHandKeys:
     def _pinch(self, h: Hand, now: float, k: float):
         held = self.dominant() if self.touching else None
         c = second_contact(h, held)
-        if self.touching and max(h.ext) < FIST_CURL:
+        if self.touching and c is None and max(h.ext) < FIST_CURL:
             self.fist_reads += 1        # one misread frame doesn't cancel a pinch; two in a row do
             if self.fist_reads >= 2:
                 self.spoiled = "the hand closed into a fist"
@@ -1453,12 +1475,10 @@ class SecondHandKeys:
                 self.dists, self.dists2, self.spoiled = {}, {}, ""
             self.counts[c] = self.counts.get(c, 0) + 1
             if c != "little base":
-                # which finger(s): the smaller of the 3D and the picture distance (the depth guess often puts the
-                # index closer than the middle finger the thumb is on); the picture is ignored when 3D says clearly
-                # apart (thumb in front of / behind the fingers with the hand turned)
+                # Starting, holding and deciding the touch all use the same distances.
                 d2 = tip_distances_2d(h)
-                for n, v in tip_distances(h).items():
-                    self.dists.setdefault(n, []).append(min(v, d2[n]) if v < INDEX_START_3D_MAX else v)
+                for n, v in second_distances(h).items():
+                    self.dists.setdefault(n, []).append(v)
                     self.dists2.setdefault(n, []).append(d2[n])
             if self.switcher:
                 self._switch_step(h, k)
@@ -1544,8 +1564,17 @@ class SecondHandKeys:
         previous / next track, one per TRACK_STEP (tucking the thumb afterwards does nothing then)."""
         on = self.thumb_since is not None
         out = thumb_out(h)
+        tucked = is_fist(h, keep=True)
+        # Pinches own their movement. Even if the model reads an OK sign as folded fingers,
+        # a thumb on a fingertip is not a media thumbs-up. Opening starts a fresh session.
+        contact = any(d < INDEX_START_2D and tip_distances(h)[n] < INDEX_START_3D_MAX
+                      for n, d in tip_distances_2d(h).items())
+        if (self.touching or self.switcher or (contact and not tucked)
+                or max(h.ext) >= FIST_KEEP or not fully_in_view(h)):
+            self.thumb_since = None
+            return
         pose = (max(h.ext) < (FIST_KEEP if on else FIST_CURL)
-                and out > (VOLUME_THUMB_KEEP if on else VOLUME_THUMB_OUT))
+                and out > VOLUME_THUMB_OUT and not tucked)
         if pose:
             self.thumb_last = now
             x = h.center[0]
@@ -1571,7 +1600,7 @@ class SecondHandKeys:
                 self.thumb_moved, self.thumb_dir, self.thumb_skip = True, d, now
                 self._do("thumbs-up right" if d > 0 else "thumbs-up left")
         elif on:
-            if (is_fist(h, keep=True) and not self.thumb_moved
+            if (tucked and not self.thumb_moved
                     and self.thumb_last - self.thumb_since >= KEY_THUMB_MIN and self.thumb_peak >= THUMB_REAL_OUT):
                 held, self.thumb_since = self.thumb_last - self.thumb_since, None
                 if now - self.last_playpause >= PLAYPAUSE_REPEAT:
@@ -1617,6 +1646,8 @@ class SecondHandKeys:
                     fn(keys)
             except Exception as e:
                 log.warning("second hand %s -> %s failed: %s", name, label, e)
+                self._show(f"{label}: failed")
+                return
         self._show(label)
         log.info("second hand %s -> %s", name, label)
 
@@ -2348,7 +2379,7 @@ class WinMouse:
         import ctypes
         self.u.FindWindowW.restype = ctypes.c_void_p
         hwnd = self.u.FindWindowW("OSKMainClass", None)
-        if hwnd:
+        if hwnd and self.u.IsWindowVisible(ctypes.c_void_p(hwnd)):
             self.u.PostMessageW(ctypes.c_void_p(hwnd), 0x0112, 0xF060, 0)     # WM_SYSCOMMAND, SC_CLOSE
         else:
             os.startfile(os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "System32", "osk.exe"))
@@ -2592,7 +2623,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Print Screen</h2><p>Thumb on the <b>middle and ring</b> fingertips together.</p></div>
  <div class="card"><h2>Voice typing / keyboard</h2><p>Thumb on the <b>index and middle</b> fingertips together: voice typing on / off (Win+H). <b>Twice quickly</b>: the on-screen keyboard opens / closes; type on it with the right hand.</p></div>
  <div class="card"><h2>Esc</h2><p>Make a <b>fist</b> (thumb tucked in): Esc comes once it has been closed a moment, no need to open it. Only when it is the only fist in view (two fists = gestures off / on). With only the left hand in view hold it about half a second (two quick fists would make the left hand the main hand instead).</p></div>
- <div class="card"><h2>Play / pause, tracks</h2><p><b>Thumbs-up</b>, then tuck the thumb into the fist: play / pause. Thumbs-up moved <b>right</b>: next track, <b>left</b>: previous track (a longer move skips more).</p></div>
+ <div class="card"><h2>Play / pause, tracks</h2><p>Hold a clear <b>thumbs-up</b> for about a third of a second, then tuck the thumb into the fist: play / pause. Thumbs-up moved <b>right</b>: next track, <b>left</b>: previous track (a longer move skips more). Open the hand to start a fresh gesture. Fingertip pinches do not skip tracks.</p></div>
 </div>
 <h3>Main hand</h3>
 <p>Your <b>right hand</b> moves the cursor and clicks; the left one gives keyboard shortcuts (below). To use your <b>left hand</b> instead: show only the left hand and make a <b>fist twice</b> quickly. The app remembers it, also after a restart, until your right hand does the same.</p>

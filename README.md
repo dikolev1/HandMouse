@@ -72,6 +72,12 @@ fingertips counts as the two. Each one is logged (pink) in the camera & log wind
 The shortcuts are set in `SECOND_KEYS` at the top of `hand_mouse.py` (e.g. `"middle": "ctrl+c"`), and
 `SECOND_HAND_KEYS = False` turns them all off.
 
+Keep the hand fully inside the camera picture. For a two-finger shortcut, touch both fingertips clearly;
+for copy / paste, keep the neighbouring fingertip away from the thumb. Pinches take priority over track
+gestures. Open the hand between separate thumbs-up gestures to reset the movement start point.
+If the on-screen keyboard cannot launch, the camera panel shows "on-screen keyboard: failed" instead of
+claiming it opened.
+
 ## The cursor box moves with you
 
 The grey box in the camera window is the part of the picture that maps to the whole screen. It adapts by
