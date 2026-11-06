@@ -180,3 +180,9 @@ g) Ideas not done: shorter double-tap wait for Ctrl+Z (KEY_DOUBLE_WINDOW 0.45 s)
 with one or both visible. Per-track detection and a 0.6 s cooldown prevent duplicate swaps.
 Thumb-out music poses do not count. Esc now waits 0.5 s to avoid firing during quick fists.
 Switching releases held inputs and preserves cursor position. Both-fists hold remains gestures on/off.
+
+Camera-edge safety border: the whole moving cursor box stays inside a visible blue inset,
+roughly one hand-width from the image edges (14% horizontally, 18% vertically).
+Following, resizing, distance scaling and saved positions all respect this boundary.
+The screen edges remain reachable at the cursor-box edges. This reserves space for gestures;
+it does not prevent the user from physically moving their hand outside the camera image.

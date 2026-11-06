@@ -210,3 +210,9 @@ by itself.
   installers). Stop tracking and use the real mouse there.
 - The log is `hand_mouse.log` in this folder (kept small automatically). Your learned hand size is in
   `hand_mouse_state.json`.
+
+Camera-edge safety border: the whole moving cursor box stays inside a visible blue inset,
+roughly one hand-width from the image edges (14% horizontally, 18% vertically).
+Following, resizing, distance scaling and saved positions all respect this boundary.
+The screen edges remain reachable at the cursor-box edges. This reserves space for gestures;
+it does not prevent the user from physically moving their hand outside the camera image.

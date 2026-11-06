@@ -111,6 +111,8 @@ CURSOR_BOX_CENTER_Y = 0.42
 # when the finger stays outside it for BOX_FOLLOW_DELAY it glides after the finger until it is back inside.
 # Its size slowly fits how far you really move: your usual range of movement becomes the box, so the screen
 # edges are within easy reach. The cursor never jumps when the box moves or changes size.
+BOX_EDGE_MARGIN_X = 0.14   # fixed inset: roughly one hand-width at the usual camera distance
+BOX_EDGE_MARGIN_Y = 0.18   # similar pixel distance vertically on the usual 4:3 camera
 BOX_FOLLOW = True
 BOX_FOLLOW_DELAY = 0.5      # s outside the box before it starts following (quick pushes to the edge don't count)
 BOX_FOLLOW_SPEED = 1.5      # how quickly it catches up (fraction of the gap per second)
@@ -713,10 +715,11 @@ class CursorBox:
 
     def rect(self, k: float = 1.0) -> tuple[float, float, float, float]:
         """(left, top, right, bottom) in picture fractions."""
-        w = min(CURSOR_BOX_WIDTH * k * self.sx, 0.95)
-        h = min(CURSOR_BOX_HEIGHT * k * self.sy, 0.95)
-        left = min(max(self.cx - w / 2, 0.0), 1.0 - w)
-        top = min(max(self.cy - h / 2, 0.0), 1.0 - h)
+        mx, my = BOX_EDGE_MARGIN_X, BOX_EDGE_MARGIN_Y
+        w = min(CURSOR_BOX_WIDTH * k * self.sx, 1.0 - 2 * mx)
+        h = min(CURSOR_BOX_HEIGHT * k * self.sy, 1.0 - 2 * my)
+        left = min(max(self.cx - w / 2, mx), 1.0 - mx - w)
+        top = min(max(self.cy - h / 2, my), 1.0 - my - h)
         return left, top, left + w, top + h
 
     def update(self, finger: tuple, k: float, now: float, dt: float, pointing: bool):
@@ -743,9 +746,14 @@ class CursorBox:
                 ex = x - (left + mx) if x < left + mx else (x - (right - mx) if x > right - mx else 0.0)
                 ey = y - (top + my) if y < top + my else (y - (bottom - my) if y > bottom - my else 0.0)
                 a = min(1.0, dt * BOX_FOLLOW_SPEED)
-                self.cx = min(max(self.cx + ex * a, w / 2), 1.0 - w / 2)
-                self.cy = min(max(self.cy + ey * a, h / 2), 1.0 - h / 2)
-                if abs(ex) < 0.004 and abs(ey) < 0.004:
+                old_cx, old_cy = self.cx, self.cy
+                self.cx = min(max((left + right) / 2 + ex * a, BOX_EDGE_MARGIN_X + w / 2),
+                              1.0 - BOX_EDGE_MARGIN_X - w / 2)
+                self.cy = min(max((top + bottom) / 2 + ey * a, BOX_EDGE_MARGIN_Y + h / 2),
+                              1.0 - BOX_EDGE_MARGIN_Y - h / 2)
+                stopped_x = abs(ex) < 0.004 or abs(self.cx - old_cx) < 1e-8
+                stopped_y = abs(ey) < 0.004 or abs(self.cy - old_cy) < 1e-8
+                if stopped_x and stopped_y:
                     self.following = False
         # 2. learn how far the finger usually moves, and fit the size to it
         if not BOX_FIT_SIZE:
@@ -2848,7 +2856,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
 <ul><li>Good light on your hands helps more than anything else.</li>
 <li>You can sit further back: small hands are read from a zoomed view, and movements scale with distance.</li>
 <li>If gestures feel too big or too small after you change where you sit, use <b>Re-learn my hand size</b> and hold your open hand up for a few seconds.</li>
-<li>The cursor box (grey rectangle in the camera window) follows your hand when your finger stays outside it, and slowly fits its size to how far you usually move. The cursor doesn't jump when it does.</li>
+<li>The cursor box (grey rectangle in the camera window) follows your hand when your finger stays outside it, and slowly fits its size to how far you usually move. The cursor doesn't jump when it does. The outer blue border keeps the whole box roughly a hand-width away from the camera edges.</li>
 <li><b>Camera &amp; log window</b> shows what the app sees (green = main hand, orange = second hand), what it is doing right now, and a log of every click, button, scroll and swipe it recognised. <kbd>P</kbd> stops/resumes, <kbd>Esc</kbd> closes the window (the app keeps running).</li>
 <li><b>Debug: save a picture of every gesture</b> (tray menu, off by default): each recognised gesture saves a strip of camera frames to the <code>debug</code> folder, to find out why a gesture misfired.</li>
 <li>Keys: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>H</kbd> stop/resume, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> re-learn hand size, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Q</kbd> quit.</li></ul>
@@ -3615,6 +3623,9 @@ def draw_preview(cv2, frame, hands, engine, fps, paused, extra="", text_on_image
     h, w = frame.shape[:2]
     f = max(w / 960.0, 0.67)                    # text / line size relative to the picture
     left, top, right, bottom = engine.box()
+    cv2.rectangle(frame, (int(BOX_EDGE_MARGIN_X * w), int(BOX_EDGE_MARGIN_Y * h)),
+                  (int((1 - BOX_EDGE_MARGIN_X) * w), int((1 - BOX_EDGE_MARGIN_Y) * h)),
+                  (180, 150, 80), 1)  # outer limit: the moving cursor box stays inside
     reach = engine.boxcam.reach
     if reach is not None:                       # your usual range of movement (what the size fits to)
         x0, y0, x1, y1 = reach

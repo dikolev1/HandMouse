@@ -371,3 +371,9 @@ checks real run() starts with camera on and gestures off. Normal Stop/Resume sti
 - **One change at a time:** deploy, then check the log right away. Tell the user in simple words what changed,
   how to use it, and what still won't work.
 - **Keep `README.md`, the module docstring and `HELP_HTML` in sync with gesture changes.**
+
+Camera-edge safety border: the whole moving cursor box stays inside a visible blue inset,
+roughly one hand-width from the image edges (14% horizontally, 18% vertically).
+Following, resizing, distance scaling and saved positions all respect this boundary.
+The screen edges remain reachable at the cursor-box edges. This reserves space for gestures;
+it does not prevent the user from physically moving their hand outside the camera image.

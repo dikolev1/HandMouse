@@ -27,15 +27,15 @@ check("finger still inside the box: box doesn't move", s.e.box() == b0, (b0, s.e
 s.go(path((0.5, 0.4), (0.85, 0.4), 0.3) + still(0.85, 0.4, 0.15) + path((0.85, 0.4), (0.5, 0.4), 0.3))
 check("quick push past the edge (0.3 s): box stays", abs(s.e.box()[0] - b0[0]) < 1e-9, (b0, s.e.box()))
 # hold it out to the right
-s.go(path((0.5, 0.4), (0.9, 0.4), 0.4)); n0 = len(s.track)
-s.go(still(0.9, 0.4, 4.0))
+s.go(path((0.5, 0.4), (0.8, 0.4), 0.4)); n0 = len(s.track)
+s.go(still(0.8, 0.4, 4.0))
 seg = s.track[n0:]
 check("held outside 4 s: box glides after the finger", s.e.box()[0] > b0[0] + 0.1, (b0, s.e.box()))
-check("...finger ends up inside the box", s.e.box()[0] < 0.9 < s.e.box()[2], s.e.box())
+check("...finger ends up inside the box", s.e.box()[0] < 0.8 < s.e.box()[2], s.e.box())
 check("...while the cursor stays still at the screen edge", min(p[0] for p in seg) >= seg[0][0] - 1 and seg[-1][0] >= 1915 and max(abs(p[1] - seg[0][1]) for p in seg) < 1, (seg[0], seg[-1]))
 check("...and box follow is over", not s.e.boxcam.following)
 # moving left again moves the cursor left normally
-s.go(path((0.9, 0.4), (0.75, 0.4), 0.6))
+s.go(path((0.8, 0.4), (0.65, 0.4), 0.6))
 check("moving the finger left moves the cursor left", s.m.pos[0] < 1700, s.m.pos)
 # size fit: move around in a small area for a long time -> box shrinks, cursor still when finger still
 s = Sim()
