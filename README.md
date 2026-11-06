@@ -216,3 +216,8 @@ roughly one hand-width from the image edges (14% horizontally, 18% vertically).
 Following, resizing, distance scaling and saved positions all respect this boundary.
 The screen edges remain reachable at the cursor-box edges. This reserves space for gestures;
 it does not prevent the user from physically moving their hand outside the camera image.
+
+L-pose recognition uses thumb spread relative to the index axis, normalized by palm size,
+instead of the rotating finger bounding box. A narrower projected thumb/index angle is accepted
+with release hysteresis; folded-finger, fingertip-separation and full-visibility checks remain.
+Photo-derived landmark tests cover sizes, rotations, both sides and tucked/parallel-thumb rejection.

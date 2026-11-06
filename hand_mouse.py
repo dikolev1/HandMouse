@@ -1750,15 +1750,22 @@ def is_l_pose(h: Hand, keep: bool = False) -> bool:
         return False
     if h.ext[0] < (1.45 if keep else 1.55) or max(h.ext[1:]) >= (1.45 if keep else FIST_CURL):
         return False
-    if thumb_out(h) < (0.15 if keep else 0.20) or thumb_index_2d(h) < 0.65:
+    if thumb_index_2d(h) < 0.65:
         return False
     f = h.flat
     index = (f[INDEX_TIP][0] - f[INDEX_MCP][0], f[INDEX_TIP][1] - f[INDEX_MCP][1])
     thumb = (f[THUMB_TIP][0] - f[2][0], f[THUMB_TIP][1] - f[2][1])
     palm = max(math.dist(f[WRIST], f[MIDDLE_MCP]), 1e-4)
     ti, tt = math.hypot(*index), math.hypot(*thumb)
-    return (tt / palm > 0.5 and ti > 1e-4
-            and abs(sum(a * b for a, b in zip(index, thumb))) / max(ti * tt, 1e-4) < 0.70)
+    # Thumb spread relative to the index axis, not the axis-aligned finger outline:
+    # the outline changes when the same L rotates. All lengths are palm-normalized.
+    tx = f[THUMB_TIP][0] - f[INDEX_MCP][0]
+    ty = f[THUMB_TIP][1] - f[INDEX_MCP][1]
+    spread = abs(index[0] * ty - index[1] * tx) / max(ti * palm, 1e-8)
+    cosine = abs(sum(a * b for a, b in zip(index, thumb))) / max(ti * tt, 1e-8)
+    return (tt / palm > 0.5 and ti / palm > 0.4
+            and spread > (0.28 if keep else 0.35)
+            and cosine < (0.90 if keep else 0.85))
 
 
 class LKeyPose:
