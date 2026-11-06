@@ -9,6 +9,9 @@ User photo clarification (2026-11-06): music pose is FOUR FINGERS FOLDED + THUMB
 OPEN the hand to play/pause; move the same pose sideways for tracks. Tucking cancels. This supersedes
 all historical tuck-to-play descriptions below. A pinch owns the gesture until a clear open release,
 preventing Alt+Tab tracking dropouts from becoming track swipes. See latest CLAUDE.md notes and tests.
+Later user feedback: play/pause works but needs faster response. It now needs a 0.12 s clear pose;
+track arming stays 0.30 s. Held Alt+Tab now navigates with native Tab/Shift+Tab, not arrows, and repairs
+lost Alt state before stepping. It keeps the user's exact tap/hold/left-right/end-stop/release semantics.
 First live trial of defe35c was NOT reliable: false Alt+Tab persisted on open hands. Follow-up removes
 the legacy 3D-only pinch start; labelled copy worked, screenshot worked once but open phases fired Alt+Tab.
 See CLAUDE.md for times and regression evidence; don't treat synthetic passes as live confirmation.

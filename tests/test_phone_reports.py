@@ -140,6 +140,47 @@ class PhoneReports(unittest.TestCase):
         self.feed(T.left, 16)
         self.assertEqual(self.events(), [("keys", (T.K["playpause"],))])
 
+    def test_quick_music_pose_then_open(self):
+        self.feed(T.thumbs, 3)  # .125 s of clear pose at 16 fps
+        self.feed(T.left, 8)
+        self.assertEqual(self.events(), [("keys", (T.K["playpause"],))])
+
+    def test_switcher_navigation_uses_tab_chords_not_arrow_keys(self):
+        self.engine._open_switcher(T.left("index", .3))
+        self.mouse.events.clear()
+        self.engine._switch_step(T.left("index", .42), 1)
+        self.assertEqual(self.events(), [("keys", (T.K["tab"],))] * 2)
+        self.mouse.events.clear()
+        self.engine._switch_step(T.left("index", .3), 1)
+        self.assertTrue(self.events())
+        self.assertTrue(all(e == ("keys", (T.K["shift"], T.K["tab"])) for e in self.events()))
+
+    def test_held_index_survives_moderate_picture_and_depth_drift(self):
+        self.feed(lambda: T.left("index"), 12)
+        for k in range(12):
+            def drift(k=k):
+                h = self.sample((.65, .90, 1.10), (.38, 1.0, 1.2), "index")
+                h.img = [(x + .01 * k, y) for x, y in h.img]
+                return h
+            self.feed(drift, 1)
+        self.assertTrue(self.engine.switcher)
+        self.assertNotIn(("key", T.ALT, False), self.events())
+
+    def test_native_window_step_repairs_lost_alt_state(self):
+        mouse = hm.WinMouse.__new__(hm.WinMouse)
+        mouse.u = Mock()
+        mouse.u.GetAsyncKeyState.return_value = 1  # low bit is NOT the key-down bit
+        mouse.key, mouse.keys = Mock(), Mock()
+        mouse.switch_window_step(1)
+        mouse.key.assert_called_once_with(T.ALT, True)
+        mouse.keys.assert_called_once_with([T.K["tab"]])
+        mouse.key.reset_mock()
+        mouse.keys.reset_mock()
+        mouse.u.GetAsyncKeyState.return_value = 0x8000
+        mouse.switch_window_step(-1)
+        mouse.key.assert_not_called()
+        mouse.keys.assert_called_once_with([T.K["shift"], T.K["tab"]])
+
     def test_user_sideways_thumb_pose_then_open(self):
         def sideways():
             h = T.thumbs()

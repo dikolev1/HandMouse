@@ -265,12 +265,13 @@ ALT_TAB_STOP_AT_ENDS = True # the selection stops at the first / last window ins
 INDEX_START_2D = 0.30       # a second-hand fingertip pinch must be this close in the picture; 3D must be under
 INDEX_START_3D_MAX = 0.60   # this (a thumb behind the index, hand edge-on, reads far in 3D). Held: 2D < 0.3 in 61
                             # of 66 samples; open: 2D > 0.6
-INDEX_HOLD_2D = 0.30        # a held index pinch also stays held while the thumb tip is this close to the index
-                            # tip in the picture (x palm length in the picture). The hand model's depth guess
+INDEX_HOLD_2D = 0.44        # a held index pinch tolerates this much picture drift; new pinches still need 0.30
+                            # (x palm length in the picture). The hand model's depth guess
                             # reads 0.5-0.65 in 3D (= apart) while the "OK" sign is clearly held and the hand
                             # moves to pick a window (debug pictures 2026-10-14)
 KEY_FIST_HOLD = 0.2         # the fist acts once it has been closed this long (s), without opening it
-KEY_THUMB_MIN = 0.3         # the thumb-out pose must be shown this long (s) before opening or moving counts
+KEY_THUMB_MIN = 0.3         # the thumb-out pose must be steady this long (s) before track movement counts
+PLAYPAUSE_HOLD = 0.12       # opening a clear music pose can toggle sooner; tracks still need KEY_THUMB_MIN
 THUMB_REAL_OUT = 0.5        # ...and the thumb must stick out at least this far at some point (thumb_out; a real
                             # thumbs-up reads >= 0.5, a fist <= 0.13). A relaxed resting hand's thumb wobbling out
                             # past 0.3 and back gave play / pause by itself (2026-10-17)
@@ -1563,8 +1564,13 @@ class SecondHandKeys:
             # the hand, so moving back goes back at once
             if self.sw_count is None or 0 <= self.sw_index + d < self.sw_count:
                 self.sw_index += d
-                if hasattr(self.mouse, "keys"):
-                    self.mouse.keys([_VK_NAMES["right" if d > 0 else "left"]])
+                native_step = getattr(self.mouse, "switch_window_step", None)
+                if native_step is not None:
+                    native_step(d)
+                elif hasattr(self.mouse, "keys"):
+                    self.mouse.keys([_VK_NAMES["tab"]] if d > 0 else [_VK_NAMES["shift"], _VK_NAMES["tab"]])
+                log.info("second hand: Alt+Tab step %s -> window %d/%s", "right" if d > 0 else "left",
+                         self.sw_index + 1, self.sw_count if self.sw_count is not None else "?")
             self.sw_x += d * step
             dx -= d * step
 
@@ -1602,6 +1608,8 @@ class SecondHandKeys:
                 return
             self.thumb_sx = 0.5 * x + 0.5 * self.thumb_sx       # smoothed: a jittery hand doesn't skip
             self.thumb_peak = max(self.thumb_peak, out)
+            if now - self.thumb_since >= PLAYPAUSE_HOLD and self.thumb_peak >= THUMB_REAL_OUT:
+                self.thumb_real = now
             if now - self.thumb_since < KEY_THUMB_MIN or self.thumb_peak < THUMB_REAL_OUT:
                 return                          # not a real thumbs-up (yet): moving now doesn't count
             self.thumb_real = now
@@ -1620,7 +1628,7 @@ class SecondHandKeys:
         elif on:
             opened = sorted(h.ext)[1] > SIDE_STRAIGHT  # at least three fingers open, not one flickering tip
             if (opened and not self.thumb_moved
-                    and self.thumb_last - self.thumb_since >= KEY_THUMB_MIN and self.thumb_peak >= THUMB_REAL_OUT):
+                    and self.thumb_last - self.thumb_since >= PLAYPAUSE_HOLD and self.thumb_peak >= THUMB_REAL_OUT):
                 held, self.thumb_since = self.thumb_last - self.thumb_since, None
                 if now - self.last_playpause >= PLAYPAUSE_REPEAT:
                     self.last_playpause = now
@@ -2393,6 +2401,16 @@ class WinMouse:
             log.warning("could not count the Alt+Tab windows: %s", e)
             return None
 
+    def switch_window_step(self, direction: int):
+        """Cycle the native switcher, never send arrows to an application behind it.
+
+        Windows or another input source can release Alt while the gesture is still held.
+        Reassert it when needed before Tab; the high bit means down (the low bit does not).
+        """
+        if not (self.u.GetAsyncKeyState(_VK_NAMES["alt"]) & 0x8000):
+            self.key(_VK_NAMES["alt"], True)
+        self.keys([_VK_NAMES["tab"]] if direction > 0 else [_VK_NAMES["shift"], _VK_NAMES["tab"]])
+
     def toggle_keyboard(self):
         """Open the Windows on-screen keyboard, or close it when it is open."""
         import ctypes
@@ -2642,7 +2660,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Print Screen</h2><p>Thumb on the <b>middle and ring</b> fingertips together.</p></div>
  <div class="card"><h2>Voice typing / keyboard</h2><p>Thumb on the <b>index and middle</b> fingertips together: voice typing on / off (Win+H). <b>Twice within 0.75 seconds</b>: the on-screen keyboard opens / closes; type on it with the right hand. A single pinch waits to see whether a second follows.</p></div>
  <div class="card"><h2>Esc</h2><p>Make a <b>fist</b> (thumb tucked in): Esc comes once it has been closed a moment, no need to open it. Only when it is the only fist in view (two fists = gestures off / on). With only the left hand in view hold it about half a second (two quick fists would make the left hand the main hand instead).</p></div>
- <div class="card"><h2>Play / pause, tracks</h2><p>Fold <b>four fingers</b> and keep the <b>thumb out</b> (sideways is fine). Hold about a third of a second, then <b>open the hand</b>: play / pause. Move the folded thumb-out pose <b>right</b>: next track, <b>left</b>: previous track. After a track skip, opening does not also play / pause. Tucking the thumb cancels. Open fully between pinches and music gestures.</p></div>
+ <div class="card"><h2>Play / pause, tracks</h2><p>Fold <b>four fingers</b> and keep the <b>thumb out</b> (sideways is fine). Hold briefly (0.12 seconds), then <b>open the hand</b>: play / pause. For tracks, hold steady about a third of a second, then move <b>right</b>: next track, <b>left</b>: previous track. After a track skip, opening does not also play / pause. Tucking the thumb cancels. Open fully between pinches and music gestures.</p></div>
 </div>
 <h3>Main hand</h3>
 <p>Your <b>right hand</b> moves the cursor and clicks; the left one gives keyboard shortcuts (below). To use your <b>left hand</b> instead: show only the left hand and make a <b>fist twice</b> quickly. The app remembers it, also after a restart, until your right hand does the same.</p>

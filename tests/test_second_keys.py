@@ -89,12 +89,12 @@ check("index tap -> Alt+Tab", keys(m) == [("keys", (ALT, K["tab"]))], keys(m))
 hold = N(10, both("index")) + [both("index", 0.3 + 0.012 * k) for k in range(1, 11)]   # then 0.12 to the right
 m, e = run(START + hold + REST)
 ks = keys(m)
-check("index held -> Alt down, Tab, 2 x Right, Alt up",
-      ks == [("key", ALT, True), ("keys", (K["tab"],)), ("keys", (K["right"],)), ("keys", (K["right"],)),
+check("index held -> Alt down, Tab, 2 x next-window Tab, Alt up",
+      ks == [("key", ALT, True), ("keys", (K["tab"],)), ("keys", (K["tab"],)), ("keys", (K["tab"],)),
              ("key", ALT, False)], ks)
 hold_l = N(10, both("index", 0.35)) + [both("index", 0.35 - 0.012 * k) for k in range(1, 6)]
 m, e = run(START + hold_l + REST)
-check("...moving left -> Left arrow", ("keys", (K["left"],)) in keys(m) and keys(m)[-1] == ("key", ALT, False), keys(m))
+check("...moving left -> previous-window Shift+Tab", ("keys", (K["shift"], K["tab"])) in keys(m) and keys(m)[-1] == ("key", ALT, False), keys(m))
 m, e = run(START + N(12, both("index")) + N(20, lambda t: [right()]))
 check("left hand leaves while holding Alt+Tab -> Alt let go", keys(m)[-1] == ("key", ALT, False), keys(m))
 
@@ -256,7 +256,8 @@ def run_w(frames, windows, fps=16):
     for f in frames:
         hs = f(t); e.update(hs if isinstance(hs, list) else [hs], t); t += 1 / fps
     return m, e
-arrows = lambda m: ["R" if x == ("keys", (K["right"],)) else "L" for x in keys(m) if x in (("keys", (K["right"],)), ("keys", (K["left"],)))]
+# Skip the initial Alt down + Tab that opens the switcher; count subsequent native cycling chords.
+arrows = lambda m: ["R" if x == ("keys", (K["tab"],)) else "L" for x in keys(m)[2:] if x in (("keys", (K["tab"],)), ("keys", (K["shift"], K["tab"])))]
 far_right = N(10, both("index")) + [both("index", 0.3 + 0.012 * k) for k in range(1, 31)]     # ~7 steps right
 m, e = run_w(START + far_right + REST, 4)
 check("4 windows, hand moves 7 steps right -> only 2 Rights (stops on the last window)", arrows(m) == ["R", "R"], arrows(m))
