@@ -138,32 +138,32 @@ m, e = run(N(14, only_left()) + N(3, only_left("fist")) + N(3, only_left()) + N(
 check("left hand alone, fist twice -> becomes the main hand, no Esc", e.main_side == "left" and keys(m) == [],
       (e.main_side, keys(m)))
 
-# ---- thumbs-up: tuck the thumb in -> play / pause; move it sideways -> next / previous track
+# ---- four fingers folded, thumb out: open -> play/pause; sideways -> next/previous track
 # (2026-10-17: a relaxed resting left hand gave play / pause by itself - its thumb wobbled out past 0.3)
 weak = lambda t: [thumbs(0.3, L=0.09), right()]
 m, e = run(START + N(10, weak) + N(8, both("fist")) + REST)
 check("relaxed thumb (sticks out only 0.37), then fist -> no play/pause", ("keys", (K["playpause"],)) not in keys(m), keys(m))
 m, e = run(START + N(4, both("thumbs")) + N(8, both("fist")) + REST)
 check("thumbs-up for only 0.19 s, then fist -> no play/pause", ("keys", (K["playpause"],)) not in keys(m), keys(m))
-flick = N(6, both("thumbs")) + N(3, both("fist")) + N(6, both("thumbs")) + N(3, both("fist"))
+flick = N(6, both("thumbs")) + N(3, both()) + N(6, both("thumbs")) + N(3, both())
 m, e = run(START + flick + REST)
-check("thumbs-up / thumb in twice within 1.2 s -> play/pause once (1.5 s between)",
+check("music pose / open twice within 1.2 s -> play/pause once (1.5 s between)",
       keys(m).count(("keys", (K["playpause"],))) == 1, keys(m))
 PP, NEXT, PREV = [("keys", (K["playpause"],))], [("keys", (K["nexttrack"],))], [("keys", (K["prevtrack"],))]
-m, e = run(START + N(6, both("thumbs")) + N(8, both("fist")) + REST)
-check("thumbs-up, then thumb tucked into the fist -> play/pause once, no Esc", keys(m) == PP, keys(m))
-m, e = run(START + N(6, both("thumbs")) + N(8, both("fist")))
-check("...fires as the thumb goes in (hand still a fist)", keys(m) == PP, keys(m))
+m, e = run(START + N(6, both("thumbs")) + N(8, both()) + REST)
+check("music pose, then open hand -> play/pause once, no Esc", keys(m) == PP, keys(m))
+m, e = run(START + N(6, both("thumbs")) + N(8, both()))
+check("...fires as the hand opens", keys(m) == PP, keys(m))
 m, e = run(START + N(32, both("thumbs")) + REST)
-check("thumbs-up held 2 s, then the hand opens -> nothing", keys(m) == [], keys(m))
+check("music pose held 2 s, then the hand opens -> play/pause", keys(m) == PP, keys(m))
 m, e = run(START + N(32, both("thumbs")))
 check("thumbs-up held (not tucked) -> nothing yet", keys(m) == [], keys(m))
 m, e = run(START + N(1, both("thumbs")) + N(8, both("fist")) + REST)
 check("thumb only flicks out for a frame, then fist -> Esc, no play/pause", keys(m) == ESC, keys(m))
 m, e = run(START + N(8, both("fist")) + N(1, both("thumbs")) + REST)
 check("fist (Esc), then opening flicks the thumb out -> Esc only", keys(m) == ESC, keys(m))
-m, e = run(START + N(8, both("fist")) + N(6, both("thumbs")) + N(8, both("fist")) + REST)
-check("fist (Esc), thumbs-up, thumb in -> Esc then play/pause", keys(m) == ESC + PP, keys(m))
+m, e = run(START + N(8, both("fist")) + N(6, both("thumbs")) + N(8, both()) + REST)
+check("fist (Esc), music pose, open -> Esc then play/pause", keys(m) == ESC + PP, keys(m))
 move = lambda x0, x1, n: [both("thumbs", x0 + (x1 - x0) * k / n) for k in range(1, n + 1)]
 hold = lambda x, n: N(n, both("thumbs", x))
 m, e = run(START + hold(0.3, 6) + move(0.3, 0.45, 6) + hold(0.45, 6) + REST)
@@ -174,12 +174,12 @@ m, e = run(START + hold(0.3, 6) + move(0.3, 0.58, 14) + hold(0.58, 8) + REST)
 check("thumbs-up moved right two steps (slowly) -> next track twice", keys(m) == NEXT * 2, keys(m))
 m, e = run(START + hold(0.3, 6) + move(0.3, 0.45, 6) + N(8, both("fist", 0.45)) + REST)
 check("moved right, then thumb tucked in -> next track only (no play/pause, no Esc)", keys(m) == NEXT, keys(m))
-m, e = run(START + hold(0.3, 6) + move(0.3, 0.37, 6) + N(8, both("fist", 0.37)) + REST)
-check("small drift (less than a step), then thumb in -> play/pause only", keys(m) == PP, keys(m))
+m, e = run(START + hold(0.3, 6) + move(0.3, 0.37, 6) + N(8, both(None, 0.37)) + REST)
+check("small drift (less than a step), then open -> play/pause only", keys(m) == PP, keys(m))
 # 2026-10-16 11:42: five skips in 1.6 s (back, back, next, next, back) while the hand moved back and forth
 wobble = [both("thumbs", 0.4 + 0.07 * (1 if (k // 3) % 2 else -1)) for k in range(30)]
 m, e = run(START + hold(0.4, 6) + wobble + REST)
-check("thumbs-up wobbling +-0.07 back and forth for 2 s -> nothing", keys(m) == [], keys(m))
+check("music pose wobbling +-0.07, then open -> play/pause, no skips", keys(m) == PP, keys(m))
 def run_small(frames, fps=16):
     """The hand reads at 40% of its normal size (a sideways fist looked small on 2026-10-16)."""
     m = V.FakeMouse(); e = hm.Engine(m, 0, 0, 1920, 1080, ref_palm=left("thumbs").palm / 0.4); t = 0.0
@@ -190,11 +190,11 @@ big_wobble = [both("thumbs", 0.4 + 0.15 * math.sin(k * 0.6)) for k in range(40)]
 m, e = run(START + hold(0.4, 6) + big_wobble + REST)
 check("thumbs-up wobbling +-0.15 (more than a step) for 2.5 s -> at most one skip", len(keys(m)) <= 1, keys(m))
 m, e = run_small(START + hold(0.4, 6) + wobble + REST)
-check("small-looking hand (size 0.4) wobbling +-0.07 -> nothing", keys(m) == [], (keys(m), round(e._k(left("thumbs")), 2)))
+check("small-looking music pose wobbling +-0.07, then open -> play/pause", keys(m) == PP, (keys(m), round(e._k(left("thumbs")), 2)))
 m, e = run(START + hold(0.3, 6) + move(0.3, 0.45, 6) + hold(0.45, 6) + move(0.45, 0.28, 6) + hold(0.28, 8) + REST)
 check("one step right, then back past the start -> next track only (no previous)", keys(m) == NEXT, keys(m))
 m, e = run(START + move(0.3, 0.46, 2) + hold(0.46, 10) + REST)
-check("hand still forming the thumbs-up while it moves -> nothing", keys(m) == [], keys(m))
+check("moving while forming, then hold and open -> play/pause, no track skip", keys(m) == PP, keys(m))
 
 # ---- the main hand is not affected, and noise does nothing
 m, e = run(START + N(6, lambda t: [left(), right("m")]) + REST)

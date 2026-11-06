@@ -5,6 +5,10 @@ Written 2026-10-18 by the previous agent (Claude Code). Read this first, then CL
 the on-screen keyboard are addressed in code with synthetic regression tests (test_phone_reports.py).
 See CLAUDE.md's 2026-11-06 entry for the rules and evidence. Webcam verification remains separate from tests.
 Enter gesture is explicitly deferred by the user. The older issue list below is historical context.
+User photo clarification (2026-11-06): music pose is FOUR FINGERS FOLDED + THUMB OUT (sideways valid).
+OPEN the hand to play/pause; move the same pose sideways for tracks. Tucking cancels. This supersedes
+all historical tuck-to-play descriptions below. A pinch owns the gesture until a clear open release,
+preventing Alt+Tab tracking dropouts from becoming track swipes. See latest CLAUDE.md notes and tests.
 First live trial of defe35c was NOT reliable: false Alt+Tab persisted on open hands. Follow-up removes
 the legacy 3D-only pinch start; labelled copy worked, screenshot worked once but open phases fired Alt+Tab.
 See CLAUDE.md for times and regression evidence; don't treat synthetic passes as live confirmation.
@@ -76,7 +80,7 @@ Left hand (second hand) keyboard shortcuts, table SECOND_KEYS (pinches act when 
   middle = Ctrl+C, ring = Ctrl+V, little-finger base (button-5 area) = Ctrl+Z (twice = Ctrl+Y)
   middle+ring = Print Screen, index+middle = Win+H voice typing (twice = on-screen keyboard)
   fist (held 0.2 s, only when it is the only fist in view) = Esc
-  thumbs-up then thumb tucked in = Play/Pause; thumbs-up moved right/left = next/previous track
+  four fingers folded + thumb out, then OPEN = Play/Pause; same pose moved right/left = next/previous track
 Tray: Camera & log window, Gestures on, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size,
 "Debug: save a picture of every gesture", Close.
 

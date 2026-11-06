@@ -92,7 +92,7 @@ is clearly wide open (so "twice" taps don't merge); 2 fist frames in a row cance
 | Thumb on middle + ring | Print Screen | |
 | Thumb on index + middle | Win+H (voice typing); twice: on-screen keyboard | `WinMouse.toggle_keyboard`: `osk.exe` via `os.startfile` (no admin needed), closed with `WM_SYSCOMMAND/SC_CLOSE` to `OSKMainClass` (both checked on the laptop) |
 | Fist (held `KEY_FIST_HOLD` 0.2 s) | Esc | Acts while closed, once per fist; re-armed when two fingers are straight again. Only the only fist in view (`two_fists` blocks it, incl. a right-hand scroll fist). Alone in view (no main hand) waits `GRAB_MAX`+0.15 s, since two quick fists are the main-hand switch. Was "on opening" until 2026-10-15; the user asked for it on closing |
-| Thumbs-up (>= `KEY_THUMB_MIN` 0.3 s and `thumb_out` peak >= `THUMB_REAL_OUT` 0.5), then thumb tucked (`is_fist(keep=True)`) | Play/pause | Fires on the tuck, at most once per `PLAYPAUSE_REPEAT` 1.5 s; logs the hold time, peak and hand size. 2026-10-17: a relaxed resting left hand (small, at the chin / desk) toggled music by itself with the old 0.15 s / 0.3 limits. The resulting fist is not Esc (`thumb_real` within 0.4 s). Debug pictures print `thumb` (thumb_out) per frame: check the user's real thumbs-up values if play/pause stops working |
+| Four fingers folded, thumb out (>= `KEY_THUMB_MIN` 0.3 s and peak >= `THUMB_REAL_OUT` 0.5), then open the hand | Play/pause | User clarified with a photo 2026-11-06: sideways thumb-out is valid; OPENING (at least 3 fingers straight) acts, not tucking the thumb. At most once per `PLAYPAUSE_REPEAT` 1.5 s. Tucking cancels without Esc. Repeat/peak guards still protect resting hands |
 | Thumbs-up moved right / left | Next / previous track | Counts only after the thumbs-up is steady `KEY_THUMB_MIN`; smoothed x; one per `TRACK_STEP` 0.12 (x hand size, never below 0.8: a sideways fist reads small and made the step tiny); `TRACK_REPEAT` 0.4 s between skips; one direction per thumbs-up, and moving back doesn't re-anchor (a wobble skips at most once). First version (step 0.08, no limits) fired 5 skips in 1.6 s on 2026-10-16. After a skip the tuck does nothing |
 
 There are also hotkeys (Ctrl+Alt+H stop/resume, Ctrl+Alt+C re-learn hand size, Ctrl+Alt+Q quit) and a tray
@@ -226,6 +226,18 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
   onto the thumb. Screenshot now accepts both below 0.25 without a ratio test, or middle < 0.25 with
   ring < `SCREENSHOT_RING_ON` 0.40 and ratio < 2.5, only when middle is closer and index >= 0.30. This asymmetric extension
   preserves ring-only paste (e.g. middle .26, ring .16) and labelled copy (ring .65+).
+- **Music gesture clarified by the user (2026-11-06).** The photo shows four fingers folded and thumb out;
+  holding briefly then OPENING should play/pause; moving sideways should skip tracks. The previous tuck
+  implementation did not match this. `SECOND_KEYS` now names the action `thumbs-up, hand open`; opening
+  needs 3 straight fingers, permits a short unfolding transition, and never plays after a track skip.
+  Tucking cancels. Pinches latch `media_blocked` until an open hand with fingertips apart is held for
+  `KEY_RELEASE_DELAY`: a lost pinch during movement cannot re-arm as a media pose. Resetting on hand loss
+  still releases held Alt; physical-hand identity changes remain a possible limitation. Tests cover an
+  index pinch misread as a moving thumb-out fist, then a clear release and a successful music gesture.
+  Live run after the 15:08 restart logged repeated `thumbs-up, hand open -> Play/Pause` on the user's
+  opening hand (15:09:23 onward). Held Alt+Tab versus tracks still awaits the user's confirmation.
+  Screenshot reliability was inconsistent in earlier live trials (reported 0/3, 3/3, 1/3); the final
+  pair calibration covers those recorded distances, but do not claim all live issues are resolved.
 - **Left copy / paste read as Win+H / Print Screen (2026-10-16).** Debug picture: thumb on the middle tip, 3D
   index 0.35 < middle 0.40 (so "index+middle"), picture middle 0.14 / index 0.45. Initially fixed with per-frame
   min(3D, picture); superseded by `second_distances` on 2026-11-06 (see above). The touch

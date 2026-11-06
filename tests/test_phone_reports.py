@@ -118,14 +118,14 @@ class PhoneReports(unittest.TestCase):
         self.feed(T.left, 20)
         self.assertEqual(self.events(), [("keys", (T.WIN, ord("H"))), ("keys", (T.CTRL, ord("C")))])
 
-    def test_tuck_between_thumb_hysteresis_thresholds(self):
+    def test_tucking_thumb_cancels_media_without_play_or_esc(self):
         self.feed(T.thumbs, 8)
         def tucked():
             h = T.left("fist")
             h.__dict__["out"] = .24  # a fist (< .30), but still above the old keep threshold (.18)
             return h
         self.feed(tucked, 8)
-        self.assertEqual(self.events(), [("keys", (T.K["playpause"],))])
+        self.assertEqual(self.events(), [])
 
     def test_open_hand_ends_media_session(self):
         self.feed(lambda: T.thumbs(.3), 8)
@@ -133,7 +133,37 @@ class PhoneReports(unittest.TestCase):
         # New pose at another location, less than .3 s later, has not moved sideways itself.
         self.feed(lambda: T.thumbs(.55), 8)
         self.feed(T.left, 8)
-        self.assertEqual(self.events(), [])
+        self.assertEqual(self.events(), [("keys", (T.K["playpause"],))])
+
+    def test_user_music_pose_then_open_plays_once(self):
+        self.feed(T.thumbs, 10)
+        self.feed(T.left, 16)
+        self.assertEqual(self.events(), [("keys", (T.K["playpause"],))])
+
+    def test_user_sideways_thumb_pose_then_open(self):
+        def sideways():
+            h = T.thumbs()
+            base = h.world[2]
+            return T.with_thumb(h, (base[0] + .12, base[1], base[2]))
+        self.assertGreater(hm.thumb_angle(sideways()), 70)
+        self.feed(sideways, 10)
+        self.feed(T.left, 16)
+        self.assertEqual(self.events(), [("keys", (T.K["playpause"],))])
+
+    def test_pinch_dropout_cannot_turn_into_music_swipe(self):
+        self.feed(lambda: T.left("index"), 12)
+        # While moving, all fingers and the contact can be misread for longer than release debounce.
+        self.feed(lambda: T.thumbs(.3), 12)
+        for k in range(16):
+            self.feed(lambda k=k: T.thumbs(.3 + .012 * k), 1)
+        self.feed(T.left, 12)
+        media = {T.K[n] for n in ("nexttrack", "prevtrack", "playpause")}
+        self.assertFalse(any(e[0] == "keys" and any(v in media for v in e[1]) for e in self.events()))
+        self.mouse.events.clear()
+        self.feed(T.left, 8)
+        self.feed(T.thumbs, 10)
+        self.feed(T.left, 16)
+        self.assertEqual(self.events(), [("keys", (T.K["playpause"],))])
 
     def test_folded_index_contact_never_becomes_track_swipe(self):
         def contact(x):

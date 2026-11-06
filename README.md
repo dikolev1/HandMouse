@@ -66,8 +66,8 @@ fingertips counts as the two. Each one is logged (pink) in the camera & log wind
 | Print Screen | Thumb on the middle and ring fingertips together |
 | Voice typing / on-screen keyboard | Thumb on the index and middle fingertips together: Windows voice typing on / off (Win+H). Twice quickly: the on-screen keyboard opens or closes; type on it with the right hand |
 | Esc | Make a fist (thumb tucked in). Esc comes after 0.2 s while the fist is still closed, once per fist (open the hand before the next one). Only when it is the only fist in view: two fists are gestures off / on, and a right-hand fist is scrolling. With only the left hand in view, hold the fist about half a second, because two quick fists make the left hand the main hand instead |
-| Play / pause | A clear thumbs-up (thumb well out) held about a third of a second, then tuck the thumb into the fist. It happens as the thumb goes in; the fist you end up with doesn't press Esc. At most once per 1.5 s |
-| Next / previous track | Make a clear thumbs-up, hold it still about a third of a second, then move it right / left. Each step of about 12% of the camera picture skips one track (a longer, slower move skips more; at most one skip per 0.4 s). One direction per thumbs-up: moving back doesn't skip the other way. Tucking the thumb afterwards does nothing |
+| Play / pause | Fold four fingers, keep the thumb clearly out (sideways is fine), hold about a third of a second, then **open the hand**. It acts on opening, once, at most once per 1.5 s. Tucking the thumb into a fist cancels |
+| Next / previous track | Make the same folded-fingers, thumb-out pose, hold it still about a third of a second, then move it right / left. Each step of about 12% of the camera picture skips one track (a longer, slower move skips more; at most one skip per 0.4 s). One direction per pose: moving back doesn't skip the other way. Opening afterwards does not also play / pause |
 
 The shortcuts are set in `SECOND_KEYS` at the top of `hand_mouse.py` (e.g. `"middle": "ctrl+c"`), and
 `SECOND_HAND_KEYS = False` turns them all off.
@@ -75,6 +75,8 @@ The shortcuts are set in `SECOND_KEYS` at the top of `hand_mouse.py` (e.g. `"mid
 Keep the hand fully inside the camera picture. For a two-finger shortcut, touch both fingertips clearly;
 for copy / paste, keep the neighbouring fingertip away from the thumb. Pinches take priority over track
 gestures. Open the hand between separate thumbs-up gestures to reset the movement start point.
+After a fingertip pinch, open fully for a moment before starting a music gesture. A pinch keeps control
+until that release, so a misread during Alt+Tab movement cannot turn into a track swipe.
 Pinches now require visible fingertip contact; moving the thumb near an open index finger does nothing.
 The keyboard's double-pinch allows three quarters of a second between taps (voice typing waits that long
 to check for the second tap). Undo/redo keeps its shorter double-tap timing.
