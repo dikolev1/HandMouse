@@ -171,7 +171,7 @@ check("thumbs-up moved right one step -> next track", keys(m) == NEXT, keys(m))
 m, e = run(START + hold(0.45, 6) + move(0.45, 0.3, 6) + hold(0.3, 6) + REST)
 check("thumbs-up moved left one step -> previous track", keys(m) == PREV, keys(m))
 m, e = run(START + hold(0.3, 6) + move(0.3, 0.58, 14) + hold(0.58, 8) + REST)
-check("thumbs-up moved right two steps (slowly) -> next track twice", keys(m) == NEXT * 2, keys(m))
+check("one long right swipe -> next track once", keys(m) == NEXT, keys(m))
 m, e = run(START + hold(0.3, 6) + move(0.3, 0.45, 6) + N(8, both("fist", 0.45)) + REST)
 check("moved right, then thumb tucked in -> next track only (no play/pause, no Esc)", keys(m) == NEXT, keys(m))
 m, e = run(START + hold(0.3, 6) + move(0.3, 0.37, 6) + N(8, both(None, 0.37)) + REST)
@@ -186,9 +186,9 @@ def run_small(frames, fps=16):
     for f in frames:
         hs = f(t); e.update(hs if isinstance(hs, list) else [hs], t); t += 1 / fps
     return m, e
-big_wobble = [both("thumbs", 0.4 + 0.15 * math.sin(k * 0.6)) for k in range(40)]     # smooth, +-0.15
+big_wobble = [both("thumbs", 0.6 + 0.05 * math.sin(k * 0.6)) for k in range(40)]  # all on the far side of start .4
 m, e = run(START + hold(0.4, 6) + big_wobble + REST)
-check("thumbs-up wobbling +-0.15 (more than a step) for 2.5 s -> at most one skip", len(keys(m)) <= 1, keys(m))
+check("hand stays outside the return zone for 2.5 s -> one skip", keys(m) == NEXT, keys(m))
 m, e = run_small(START + hold(0.4, 6) + wobble + REST)
 check("small-looking music pose wobbling +-0.07, then open -> play/pause", keys(m) == PP, (keys(m), round(e._k(left("thumbs")), 2)))
 m, e = run(START + hold(0.3, 6) + move(0.3, 0.45, 6) + hold(0.45, 6) + move(0.45, 0.28, 6) + hold(0.28, 8) + REST)

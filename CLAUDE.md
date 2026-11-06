@@ -93,7 +93,7 @@ is clearly wide open (so "twice" taps don't merge); 2 fist frames in a row cance
 | Thumb on index + middle | Win+H (voice typing); twice: on-screen keyboard | `WinMouse.toggle_keyboard`: `osk.exe` via `os.startfile` (no admin needed), closed with `WM_SYSCOMMAND/SC_CLOSE` to `OSKMainClass` (both checked on the laptop) |
 | Fist (held `KEY_FIST_HOLD` 0.2 s) | Esc | Acts while closed, once per fist; re-armed when two fingers are straight again. Only the only fist in view (`two_fists` blocks it, incl. a right-hand scroll fist). Alone in view (no main hand) waits `GRAB_MAX`+0.15 s, since two quick fists are the main-hand switch. Was "on opening" until 2026-10-15; the user asked for it on closing |
 | Four fingers folded, thumb out (>= `PLAYPAUSE_HOLD` 0.12 s and peak >= `THUMB_REAL_OUT` 0.5), then open the hand | Play/pause | User clarified with a photo 2026-11-06: sideways thumb-out is valid; OPENING (at least 3 fingers straight) acts, not tucking the thumb. At most once per `PLAYPAUSE_REPEAT` 1.5 s. Tucking cancels without Esc. Repeat/peak guards still protect resting hands. Track arming remains 0.3 s |
-| Thumbs-up moved right / left | Next / previous track | Counts only after the thumbs-up is steady `KEY_THUMB_MIN`; smoothed x; one per `TRACK_STEP` 0.12 (x hand size, never below 0.8: a sideways fist reads small and made the step tiny); `TRACK_REPEAT` 0.4 s between skips; one direction per thumbs-up, and moving back doesn't re-anchor (a wobble skips at most once). First version (step 0.08, no limits) fired 5 skips in 1.6 s on 2026-10-16. After a skip the tuck does nothing |
+| Thumb-out pose moved right / left | Next / previous track | Steady `KEY_THUMB_MIN`, smoothed x. One skip when distance from the fixed origin reaches `TRACK_STEP` 0.12 x max(hand scale, 0.8), frozen when arming. `thumb_ready` then stays false until returning within `TRACK_RETURN` 0.4 of that distance; either direction can act after return. `TRACK_REPEAT` 0.4 s is an additional guard. Never advance the origin during the pose. Opening after any skip does not also play/pause |
 
 There are also hotkeys (Ctrl+Alt+H stop/resume, Ctrl+Alt+C re-learn hand size, Ctrl+Alt+Q quit) and a tray
 menu: Camera & log window, Gestures on, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size,
@@ -244,6 +244,12 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
   reasserting Alt if GetAsyncKeyState's high bit is clear. Direction and end limits are unchanged.
   INDEX_HOLD_2D is 0.44 (start still 0.30) for moderate movement/depth drift; each emitted switcher step
   now logs its direction and selected window index, making the next live trial diagnosable.
+  Latest user confirmation: play/pause and Alt+Tab work well, track switching works, and left-hand gestures
+  no longer conflict. User requested one song per swipe, return near the start to rearm either direction.
+  Implemented `thumb_ready`, fixed `thumb_x` and frozen `thumb_step` for the pose: long/held excursions
+  skip once; return within 40% of the trigger distance rearms without itself skipping. The old advancing
+  anchor and one-direction lock are removed. `tests/test_track_recenter.py` covers long swipes both ways,
+  approximate return, partial return, repeat/reverse after return, and changing scale readings.
 - **Left copy / paste read as Win+H / Print Screen (2026-10-16).** Debug picture: thumb on the middle tip, 3D
   index 0.35 < middle 0.40 (so "index+middle"), picture middle 0.14 / index 0.45. Initially fixed with per-frame
   min(3D, picture); superseded by `second_distances` on 2026-11-06 (see above). The touch
@@ -324,8 +330,8 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
 - **Dim-light blur.** Possibly try a shorter camera exposure (`CAP_PROP_EXPOSURE`). At open, MSMF reports
   auto exposure 0.0, exposure -5. This was never tested, so verify on the laptop and revert if the picture gets
   too dark.
-- **Second-hand keys are new (2026-10-14) and not yet tested live.** Watch for: Esc from a left fist when the user
-  only meant to rest the hand, Ctrl+C/V misfires if the hand roles flip, the Alt+Tab step size (`ALT_TAB_STEP`).
+- **Second-hand keys tested live (2026-11-06).** User confirms no left-hand gesture conflicts after the fixes.
+  Preserve that separation; watch for Esc from a resting fist, role flips and Alt+Tab step size (`ALT_TAB_STEP`).
   The help page lists the default keys; it doesn't follow edits to `SECOND_KEYS`.
 - **Spurious "main hand changed" log lines** used to be common. The newer role logic logs only real side
   switches; keep it quiet.

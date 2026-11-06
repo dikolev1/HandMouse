@@ -12,6 +12,12 @@ preventing Alt+Tab tracking dropouts from becoming track swipes. See latest CLAU
 Later user feedback: play/pause works but needs faster response. It now needs a 0.12 s clear pose;
 track arming stays 0.30 s. Held Alt+Tab now navigates with native Tab/Shift+Tab, not arrows, and repairs
 lost Alt state before stepping. It keeps the user's exact tap/hold/left-right/end-stop/release semantics.
+Latest confirmation: play/pause, song switching and Alt+Tab work; left-hand gesture conflicts are resolved.
+User's new track rule: ONE SONG PER SWIPE, return near the fixed starting point before another swipe in
+either direction. Distance scale is frozen per pose so turning the hand doesn't change sensitivity.
+PENDING ONLY (do not implement yet): user supplied an L-shaped pose (index and thumb extended, other
+three fingers folded), left hand = Backspace, right hand = Enter. Start ONLY after the user explicitly
+approves the current one-song-per-swipe changes. No recognition code or tests for that pose have been added.
 First live trial of defe35c was NOT reliable: false Alt+Tab persisted on open hands. Follow-up removes
 the legacy 3D-only pinch start; labelled copy worked, screenshot worked once but open phases fired Alt+Tab.
 See CLAUDE.md for times and regression evidence; don't treat synthetic passes as live confirmation.
