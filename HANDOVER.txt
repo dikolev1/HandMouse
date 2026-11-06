@@ -19,7 +19,8 @@ Follow-up refinement: after a skip, return near the start and WAIT THERE 0.5 s b
 Passing through does not rearm; leaving the zone or unreadable frames reset the wait. See TRACK_RETURN_HOLD.
 User approved f88d1e3 and it was fast-forwarded to origin/main on 2026-11-06. New develop work adds:
 - L-shaped pose (index/thumb extended, other three folded): physical LEFT = Backspace, RIGHT = Enter.
-  Hold 0.35 s, one press per pose; release to repeat. Preserve physical sides if the main hand changes.
+  Hold 0.35 s for the first press. LEFT Backspace waits another 0.5 s, then repeats every 0.08 s while
+  clearly held; release/lost tracking stops it. RIGHT Enter stays one press per pose. Preserve physical sides.
 - Every launch/reload starts camera ON, gestures OFF. Two fists or tray Gestures on enables them.
 - Tray Cursor sensitivity opens a real 25%-250% slider, 100% normal, saved as cursor_sensitivity.
   It applies live and survives app/PC restart. See CLAUDE.md for UI threading and atomic state writes.

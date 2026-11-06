@@ -62,7 +62,9 @@ scroll, swipe windows, press buttons 4/5 and change the volume instead of giving
 
 **L-pose keys (both physical hands):** extend your index finger and thumb in an L, with the other three
 fingers folded, and hold briefly (about 0.35 seconds). **Left hand = Backspace; right hand = Enter.**
-Each hold presses once; open/release before repeating. These two keys keep their physical left/right
+Backspace deletes once, waits 0.5 seconds, then keeps deleting while the left pose is held. Release to
+stop; unreadable/lost tracking pauses deletion. Right-hand Enter presses once per pose; release before
+repeating it. These two keys keep their physical left/right
 meaning even if you change which hand controls the mouse. The right-hand pose holds the cursor still.
 
 Made with the other hand (the left one). A pinch acts when the thumb **lets go**, so a touch that slides onto two

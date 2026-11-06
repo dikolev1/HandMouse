@@ -112,11 +112,16 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
 ## Architecture (one frame)
 
 **Physical-hand L keys (approved 2026-11-06):** `is_l_pose` needs straight index, folded middle/ring/little,
-thumb extended sideways and separated from index. `LKeyPose` waits `L_POSE_HOLD` 0.35 s, fires once,
-and requires `L_POSE_RELEASE` 0.18 s to rearm. LEFT = Backspace, RIGHT = Enter even when main_side is
+thumb extended sideways and separated from index. `LKeyPose` waits `L_POSE_HOLD` 0.35 s for its first key.
+LEFT Backspace then waits `BACKSPACE_REPEAT_DELAY` 0.5 s and repeats at `BACKSPACE_REPEAT_INTERVAL` 0.08 s;
+RIGHT Enter fires once, requiring `L_POSE_RELEASE` 0.18 s release to rearm. Mapping is physical even when main_side is
 left. Engine gives it priority over clicks, side buttons, scrolling, volume and second-hand shortcuts,
-freezes the main cursor/box, and releases held Alt BEFORE the new key. Held/briefly unreadable poses
-cannot repeat. `tests/test_l_pose_settings.py` covers mapping, no conflicts, short/long/repeated poses,
+freezes the main cursor/box, and releases held Alt BEFORE the new key. Unreadable frames never produce
+key presses. Repeats require a currently clear left L-pose and matching side;
+they stop on release even during release debounce, hand loss, pause or gestures-off. Keys are complete
+press/release pulses, not a held OS key; delayed frames never replay a backlog. `tests/test_backspace_repeat.py`
+covers initial delay, cadence, no catchup burst, Enter once and deletion stopping.
+`tests/test_l_pose_settings.py` covers mapping, no conflicts, short/long/repeated poses,
 startup off/two-fist wake, sensitivity gain and persisted/concurrent settings. The loop-window-drag test
 checks real run() starts with camera on and gestures off. Normal Stop/Resume still resumes gestures.
 

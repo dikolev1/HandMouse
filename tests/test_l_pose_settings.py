@@ -41,10 +41,10 @@ class LPoseTests(unittest.TestCase):
                 self.assertFalse(hm.is_l_pose(T.left(name)))
         self.assertFalse(hm.is_l_pose(T.V.make(fold=(1, 2, 3))))  # index pointing, thumb tucked/up
 
-    def test_left_l_backspace_once_without_other_gestures(self):
+    def test_short_left_l_backspace_once_without_other_gestures(self):
         self.feed(lambda: [T.left(), T.right()])
         self.mouse.events.clear()
-        self.feed(lambda: [l_hand(), T.right()], 90)
+        self.feed(lambda: [l_hand(), T.right()], 22)  # initial key, before repeat delay
         self.feed(lambda: [T.left(), T.right()])
         self.assertEqual(self.mouse.events, [("keys", (hm._VK_NAMES["backspace"],))])
 
@@ -74,7 +74,7 @@ class LPoseTests(unittest.TestCase):
         self.assertEqual(sorted(T.keys(self.mouse)), sorted([
             ("keys", (hm._VK_NAMES["backspace"],)), ("keys", (hm._VK_NAMES["enter"],))]))
 
-    def test_unreadable_frames_do_not_repeat_a_held_key(self):
+    def test_unreadable_frames_pause_held_backspace(self):
         self.feed(lambda: [T.left(), T.right()])
         self.feed(lambda: [l_hand(), T.right()], 25)
         def blurred():
@@ -82,8 +82,12 @@ class LPoseTests(unittest.TestCase):
             h.unsure = True
             return [h, T.right()]
         self.feed(blurred, 25)
-        self.feed(lambda: [l_hand(), T.right()], 25)
         self.assertEqual(T.keys(self.mouse), [("keys", (hm._VK_NAMES["backspace"],))])
+        self.feed(lambda: [l_hand(), T.right()], 1)
+        self.assertEqual(T.keys(self.mouse), [("keys", (hm._VK_NAMES["backspace"],))])
+        self.feed(lambda: [l_hand(), T.right()], 24)
+        self.assertGreater(len(T.keys(self.mouse)), 1)
+        self.assertTrue(all(event == ("keys", (hm._VK_NAMES["backspace"],)) for event in T.keys(self.mouse)))
 
     def test_held_alt_released_before_backspace(self):
         self.feed(lambda: [T.left(), T.right()])

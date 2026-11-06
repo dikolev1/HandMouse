@@ -32,8 +32,8 @@ Keyboard shortcuts with the other hand (your LEFT hand); pinches act when the th
   play / pause    four fingers folded, thumb out; hold briefly, then OPEN the hand
   next / previous thumb-out pose moved right / left: one song, return near start and wait 0.5 s to rearm
 
-L-shaped pose (index up, thumb out sideways, other three folded), held briefly, once per pose:
-  physical LEFT hand = Backspace; physical RIGHT hand = Enter. Open/release before repeating.
+L-shaped pose (index up, thumb out sideways, other three folded), held briefly:
+  physical LEFT hand = Backspace (hold to repeat); physical RIGHT hand = Enter (once per pose).
 
 At every start the camera is ON and gestures are OFF. Two fists or the tray's Gestures on enables them.
 
@@ -1730,8 +1730,10 @@ class SecondHandKeys:
         return ""
 
 
-L_POSE_HOLD = 0.35          # clear L: index and thumb extended, other three folded; once per pose
+L_POSE_HOLD = 0.35          # clear L: index and thumb extended, other three folded; initial key press
 L_POSE_RELEASE = 0.18       # a short misread must not repeat Backspace/Enter
+BACKSPACE_REPEAT_DELAY = 0.5   # pause after the first deletion, like holding a keyboard key
+BACKSPACE_REPEAT_INTERVAL = 0.08  # repeated deletion while the LEFT L pose stays clearly visible
 
 
 def is_l_pose(h: Hand, keep: bool = False) -> bool:
@@ -1752,13 +1754,14 @@ def is_l_pose(h: Hand, keep: bool = False) -> bool:
 
 
 class LKeyPose:
-    """One key per held L pose. Brief unreadable frames never create another press."""
+    """L-pose key: left Backspace repeats after a delay, right Enter fires once."""
     def __init__(self):
         self.reset()
 
     def reset(self):
         self.since, self.side, self.fired = None, None, False
         self.last_pose = -1e9
+        self.next_repeat = None
 
     @property
     def busy(self):
@@ -1768,6 +1771,8 @@ class LKeyPose:
         if h.unsure:
             if not self.fired:
                 self.since = None
+            elif self.next_repeat is not None:
+                self.next_repeat = max(self.next_repeat, now + BACKSPACE_REPEAT_INTERVAL)
             self.last_pose = now
             return False
         if h.hand_side is not None and is_l_pose(h, keep=self.busy):
@@ -1776,9 +1781,18 @@ class LKeyPose:
             self.last_pose = now
             if not self.fired and now - self.since >= L_POSE_HOLD:
                 self.fired = True
+                if self.side == "left":
+                    self.next_repeat = now + BACKSPACE_REPEAT_DELAY
                 return True
-        elif now - self.last_pose >= L_POSE_RELEASE:
-            self.reset()
+            if (self.fired and self.side == "left" and h.hand_side == "left"
+                    and self.next_repeat is not None and now >= self.next_repeat):
+                self.next_repeat = now + BACKSPACE_REPEAT_INTERVAL  # no backlog bursts after a slow frame
+                return True
+        else:
+            if self.next_repeat is not None:
+                self.next_repeat = max(self.next_repeat, now + BACKSPACE_REPEAT_INTERVAL)
+            if now - self.last_pose >= L_POSE_RELEASE:
+                self.reset()
         return False
 
 
@@ -2809,7 +2823,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Play / pause, tracks</h2><p>Fold <b>four fingers</b> and keep the <b>thumb out</b> (sideways is fine). Hold briefly (0.12 seconds), then <b>open the hand</b>: play / pause. For tracks, hold steady about a third of a second, then move <b>right</b>: next track, <b>left</b>: previous track. <b>One song per swipe.</b> Return near where you started and <b>wait there 0.5 seconds</b> before swiping again in either direction. Passing through the start does nothing; leaving it early restarts the wait. Holding it out does not skip more songs. After a track skip, opening does not also play / pause. Tucking the thumb cancels. Open fully between pinches and music gestures.</p></div>
 </div>
 <h3>Main hand</h3>
-<p><b>L-pose keys:</b> index up, thumb out sideways, middle/ring/little fingers folded. Hold briefly: physical <b>left hand = Backspace</b>, physical <b>right hand = Enter</b>. One press per pose; open/release to repeat. These keys follow the physical hand even if you change the main hand.</p>
+<p><b>L-pose keys:</b> index up, thumb out sideways, middle/ring/little fingers folded. Physical <b>left hand = Backspace</b>: deletes once, waits 0.5 seconds, then repeats while held; release to stop. Physical <b>right hand = Enter</b>: one press per pose, release to repeat. These keys follow the physical hand even if you change the main hand.</p>
 <p>Your <b>right hand</b> moves the cursor and clicks; the left one gives keyboard shortcuts (below). To use your <b>left hand</b> instead: show only the left hand and make a <b>fist twice</b> quickly. The app remembers it, also after a restart, until your right hand does the same.</p>
 <h3>Tray icon (next to the clock)</h3>
 <ul><li><b>Left-click</b>: stop / resume tracking, camera off (red badge = stopped, orange badge = gestures off).</li>
