@@ -32,8 +32,13 @@ Keyboard shortcuts with the other hand (your LEFT hand); pinches act when the th
   play / pause    four fingers folded, thumb out; hold briefly, then OPEN the hand
   next / previous thumb-out pose moved right / left: one song, return near start and wait 0.5 s to rearm
 
+L-shaped pose (index up, thumb out sideways, other three folded), held briefly, once per pose:
+  physical LEFT hand = Backspace; physical RIGHT hand = Enter. Open/release before repeating.
+
+At every start the camera is ON and gestures are OFF. Two fists or the tray's Gestures on enables them.
+
 Tray icon (next to the clock): left-click stops / resumes tracking; right-click for the menu
-(Camera & log window, Gestures on, Stop / Resume tracking, Gestures help, Start with Windows, Re-learn my hand size,
+(Camera & log window, Gestures on, Cursor sensitivity slider, Stop / Resume tracking, Gestures help, Start with Windows, Re-learn my hand size,
 Close). The camera & log window shows what the app sees and a list of the gestures it recognised.
 Double-clicking the desktop icon while the app runs opens that window.
 
@@ -579,14 +584,26 @@ class OneEuro:
         return self.x
 
 
+def normalize_sensitivity(value) -> float:
+    """Saved cursor gain: default 100%, limited to the slider's 25%-250% range."""
+    try:
+        number = float(value)
+        if isinstance(value, bool) or not math.isfinite(number):
+            return 1.0
+        return min(max(number, 0.25), 2.5)
+    except (TypeError, ValueError):
+        return 1.0
+
+
 class CursorFilter:
     """Finger position (screen px) -> steady cursor position.
     1. One Euro smoothing, 2. a steady radius that ignores small wobble,
     3. precision gain: slow motion moves the cursor less (for aiming), fast motion moves it fully and
        pulls it back in line with where the finger points."""
 
-    def __init__(self, bounds):
+    def __init__(self, bounds, sensitivity: float = 1.0):
         self.x0, self.y0, self.x1, self.y1 = bounds
+        self.sensitivity = normalize_sensitivity(sensitivity)
         self.fx = OneEuro(SMOOTH_MIN_CUTOFF, SMOOTH_BETA)
         self.fy = OneEuro(SMOOTH_MIN_CUTOFF, SMOOTH_BETA)
         self.reset()
@@ -644,7 +661,7 @@ class CursorFilter:
             return tuple(self.cur)
         self.speed = 0.5 * self.speed + 0.5 * math.hypot(mx, my) / dt
         k = min(max((self.speed - PRECISION_SPEED) / max(FULL_SPEED - PRECISION_SPEED, 1), 0.0), 1.0)
-        g = PRECISION_GAIN + (1 - PRECISION_GAIN) * k
+        g = (PRECISION_GAIN + (1 - PRECISION_GAIN) * k) * self.sensitivity
         self.reason = "edge of box" if (edge[0] or edge[1]) else ("fast move" if k > 0 else "slow move")
         self.cur[0] += g * mx
         self.cur[1] += g * my
@@ -1713,6 +1730,58 @@ class SecondHandKeys:
         return ""
 
 
+L_POSE_HOLD = 0.35          # clear L: index and thumb extended, other three folded; once per pose
+L_POSE_RELEASE = 0.18       # a short misread must not repeat Backspace/Enter
+
+
+def is_l_pose(h: Hand, keep: bool = False) -> bool:
+    """Index up + thumb sideways, other three folded. Reject pinches, pointing and music fists."""
+    if h.unsure or not fully_in_view(h):
+        return False
+    if h.ext[0] < (1.45 if keep else 1.55) or max(h.ext[1:]) >= (1.45 if keep else FIST_CURL):
+        return False
+    if thumb_out(h) < (0.15 if keep else 0.20) or thumb_index_2d(h) < 0.65:
+        return False
+    f = h.flat
+    index = (f[INDEX_TIP][0] - f[INDEX_MCP][0], f[INDEX_TIP][1] - f[INDEX_MCP][1])
+    thumb = (f[THUMB_TIP][0] - f[2][0], f[THUMB_TIP][1] - f[2][1])
+    palm = max(math.dist(f[WRIST], f[MIDDLE_MCP]), 1e-4)
+    ti, tt = math.hypot(*index), math.hypot(*thumb)
+    return (tt / palm > 0.5 and ti > 1e-4
+            and abs(sum(a * b for a, b in zip(index, thumb))) / max(ti * tt, 1e-4) < 0.70)
+
+
+class LKeyPose:
+    """One key per held L pose. Brief unreadable frames never create another press."""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.since, self.side, self.fired = None, None, False
+        self.last_pose = -1e9
+
+    @property
+    def busy(self):
+        return self.side is not None
+
+    def update(self, h: Hand, now: float) -> bool:
+        if h.unsure:
+            if not self.fired:
+                self.since = None
+            self.last_pose = now
+            return False
+        if h.hand_side is not None and is_l_pose(h, keep=self.busy):
+            if self.since is None or (self.side != h.hand_side and not self.fired):
+                self.since, self.side = now, h.hand_side
+            self.last_pose = now
+            if not self.fired and now - self.since >= L_POSE_HOLD:
+                self.fired = True
+                return True
+        elif now - self.last_pose >= L_POSE_RELEASE:
+            self.reset()
+        return False
+
+
 class Track:
     """A physical hand followed from frame to frame by its position."""
 
@@ -1727,11 +1796,12 @@ class Engine:
 
     def __init__(self, mouse, screen_x: int, screen_y: int, screen_w: int, screen_h: int,
                  ref_palm: float | None = None, on_ref_learned=None, box_state: dict | None = None,
-                 main_side: str = "right", on_main_side=None):
+                 main_side: str = "right", on_main_side=None, gestures_on: bool = True,
+                 cursor_sensitivity: float = 1.0):
         self.mouse = mouse
         self.boxcam = CursorBox(box_state)
         self.clicks = ClickTracker(mouse, getattr(mouse, "double_click_time", 0.5))
-        self.cursor = CursorFilter((0, 0, 1, 1))
+        self.cursor = CursorFilter((0, 0, 1, 1), cursor_sensitivity)
         self.sides: dict[str, SideButtonTracker] = {}   # mouse buttons 4/5, one per hand
         self.release_seen = -1e9        # last click release already handled by the cursor lock
         self.release_point = None       # where the finger pointed when the button was released
@@ -1743,6 +1813,7 @@ class Engine:
         self.volume_target = None
         self.swiper = Swiper()
         self.keys = SecondHandKeys(mouse)
+        self.l_poses: dict[str, LKeyPose] = {}
         self.tracks: dict[str, Track] = {}
         self.next_id = 0
         self.main_key = None            # key of the hand that moves the cursor
@@ -1766,7 +1837,7 @@ class Engine:
         self.diag = None
         self.scroll_marks: list[tuple] = []     # (anchor_y, current_y) for the preview
         self.both_fists_since = None
-        self.gestures_off = False       # two fists turned the gestures off (camera still on)
+        self.gestures_off = not gestures_on   # camera stays on; run() deliberately starts with gestures off
         self.gestures_request = None    # True / False: turn gestures on / off (from the tray, another thread)
         self.gestures_changed = None    # "on" / "off" once after a change, for the main loop (beep, tray)
         self.fist_stop_armed = False    # a hand must be seen open (or out of view) before two fists count
@@ -1778,6 +1849,14 @@ class Engine:
         self.dragging = False
 
     # ---- setup
+    @property
+    def sensitivity(self):
+        return self.cursor.sensitivity
+
+    def set_sensitivity(self, value):
+        # One scalar assignment is safe from the settings window's thread and never moves the cursor.
+        self.cursor.sensitivity = normalize_sensitivity(value)
+
     def set_screen(self, x: int, y: int, w: int, h: int):
         """Screen area the cursor can reach (called again when monitors are added or removed)."""
         self.sx0, self.sy0, self.sw, self.sh = x, y, w, h
@@ -1847,6 +1926,7 @@ class Engine:
             self.fists.clear()
         self.swiper.reset()
         self.keys.reset()
+        self.l_poses.clear()
         self.scroll_acc = self.hscroll_acc = 0.0
 
     # ---- which hand is which
@@ -1988,6 +2068,25 @@ class Engine:
         main = self._roles(hands, now)
         second = next((h for h in hands if h is not main), None) if main is not None else None
         acting = hands if SECOND_HAND_GESTURES else [h for h in hands if h is main]    # hands whose gestures count
+        l_busy, l_fired = set(), []
+        self.l_poses = {key: pose for key, pose in self.l_poses.items() if key in self.tracks}
+        if self.gestures_off:
+            self.l_poses.clear()
+        else:
+            for h in hands:
+                pose = self.l_poses.setdefault(h.key, LKeyPose())
+                if pose.update(h, now):
+                    l_fired.append((h, pose.side))
+                if pose.busy:
+                    l_busy.add(h.key)
+            if main is not None and main.key in l_busy:
+                self.clicks.reset(now)
+                side_button = self.sides.pop(main.key, None)
+                if side_button is not None:
+                    side_button.release()
+            if any(h.key in l_busy and h is not main for h in hands):
+                self.keys.pending = None
+                self.keys.reset()      # release held Alt BEFORE an L-pose key can be sent
 
         # --- fist scroll (either hand)
         rate = hrate = 0.0
@@ -1996,6 +2095,9 @@ class Engine:
                 del self.fists[key]
         for h in hands:
             fs = self.fists.setdefault(h.key, FistScroll())
+            if h.key in l_busy:
+                self.fists[h.key] = FistScroll()
+                continue
             fs.quiet = self.gestures_off or h not in acting     # (still followed: two fists need both hands)
             if h.unsure:                        # finger shapes unreadable this frame: keep the last state
                 fs.follow(h)
@@ -2021,6 +2123,9 @@ class Engine:
         target = None
         if VOLUME_CONTROL and not self.gestures_off:
             for h in acting:
+                if h.key in l_busy:
+                    self.thumbs.pop(h.key, None)
+                    continue
                 tv = self.thumbs.setdefault(h.key, ThumbVolume())
                 t = None if h.unsure else tv.update(h, now)
                 if t is None and h.unsure and tv.state == "active":
@@ -2064,6 +2169,14 @@ class Engine:
                 self.status.insert(0, "GESTURES OFF - hold both fists 1 s to turn them back on")
             return
 
+        for h, side in l_fired:
+            label, vk = ("Backspace", _VK_NAMES["backspace"]) if side == "left" else ("Enter", _VK_NAMES["enter"])
+            try:
+                self.mouse.keys([vk])
+                log.info("%s hand L pose -> %s", side, label)
+            except Exception:
+                log.exception("%s hand L pose -> %s failed", side, label)
+
         if self.volume_target is not None:
             self.gesture = f"VOLUME {self.volume_level * 100:.0f}%"
         if rate:
@@ -2104,7 +2217,7 @@ class Engine:
                 st = self.sides.setdefault(h.key, SideButtonTracker(self.mouse))
                 if h.unsure:
                     continue                    # finger shapes unreadable this frame: keep the state
-                busy = self.fists[h.key].busy or (h is main and (self.clicks.touching or self.clicks.pressed is not None))
+                busy = h.key in l_busy or self.fists[h.key].busy or (h is main and (self.clicks.touching or self.clicks.pressed is not None))
                 st.update(h, now, suppress=busy)
                 if st.pressed:
                     self.gesture = "BUTTON 4 (back)" if st.pressed == "x1" else "BUTTON 5 (forward)"
@@ -2124,13 +2237,21 @@ class Engine:
             if main is None:
                 others = [h for h in hands if h.hand_side is not None and h.hand_side != self.main_side]
                 kh = others[0] if len(others) == 1 else None
-            self.keys.update(kh, now, self._k(kh) if kh is not None else 1.0, main_in_view=main is not None,
-                             two_fists=two_fists or self.both_fists_since is not None)
+            if kh is not None and kh.key in l_busy:
+                self.keys.pending = None  # an L pose cancels a partial shortcut instead of firing it
+                self.keys.reset()
+            else:
+                self.keys.update(kh, now, self._k(kh) if kh is not None else 1.0, main_in_view=main is not None,
+                                 two_fists=two_fists or self.both_fists_since is not None)
             shown = self.keys.display(now)
             if shown:
                 side = kh.hand_side if kh is not None and kh.hand_side else "second"
                 self.gesture = f"{side.upper()} HAND: {shown}"
 
+        if l_busy:
+            self.gesture = " / ".join(f"{self.l_poses[h.key].side.upper()} HAND: "
+                                     f"{'BACKSPACE' if self.l_poses[h.key].side == 'left' else 'ENTER'}"
+                                     for h in hands if h.key in l_busy)
         if main is None:                        # main hand briefly gone: hold everything
             self._status(hands, main, rate, frozen=True)
             return
@@ -2140,7 +2261,7 @@ class Engine:
         dm, dr = click_distances(main)
         side_busy = main.key in self.sides and self.sides[main.key].touching is not None
         if not main.unsure:                     # unreadable finger shapes: keep the current click state
-            self.clicks.update(dm, dr, now, suppress=main_fist or side_busy or main.ext[0] < INDEX_STRAIGHT,
+            self.clicks.update(dm, dr, now, suppress=main.key in l_busy or main_fist or side_busy or main.ext[0] < INDEX_STRAIGHT,
                                dragging=self.dragging)
         if self.clicks.pressed:
             self.gesture = f"{self.clicks.pressed.upper()} CLICK"
@@ -2167,7 +2288,7 @@ class Engine:
         ix, iy = self._fingertip(main.img[INDEX_TIP])
         old_box = self.box()
         self.k_cursor += (self._k(main) - self.k_cursor) * min(1.0, dt / 1.5)
-        pointing = (not main_fist and not main.unsure and main.ext[0] >= INDEX_STRAIGHT
+        pointing = (main.key not in l_busy and not main_fist and not main.unsure and main.ext[0] >= INDEX_STRAIGHT
                     and not self.clicks.touching and self.clicks.pressed is None)
         self.boxcam.update((ix, iy), self.k_cursor, now, dt, pointing)
         left, top, right, bottom = self.box()
@@ -2200,7 +2321,7 @@ class Engine:
             else:
                 locked = True
         side_main = self.sides.get(main.key)
-        frozen = (main_fist or main_thumb or max(main.ext) < FIST_CURL or self.clicks.freezing(now)
+        frozen = (main.key in l_busy or main_fist or main_thumb or max(main.ext) < FIST_CURL or self.clicks.freezing(now)
                   or locked
                   or (self.clicks.pressed is not None and not self.dragging)
                   or (side_main is not None and side_main.touching == "x1"))     # "OK" pinch bends the index
@@ -2619,13 +2740,16 @@ def set_autostart(on: bool):
 
 
 STATE_PATH = os.path.join(HERE, "hand_mouse_state.json")
+_STATE_LOCK = threading.RLock()
 
 
 def load_state() -> dict:
     try:
         import json
-        with open(STATE_PATH, encoding="utf-8") as f:
-            return json.load(f)
+        with _STATE_LOCK:
+            with open(STATE_PATH, encoding="utf-8") as f:
+                value = json.load(f)
+            return value if isinstance(value, dict) else {}
     except Exception:
         return {}
 
@@ -2633,10 +2757,13 @@ def load_state() -> dict:
 def save_state(**values):
     try:
         import json
-        state = load_state()
-        state.update(values)
-        with open(STATE_PATH, "w", encoding="utf-8") as f:
-            json.dump(state, f, indent=1)
+        with _STATE_LOCK:
+            state = load_state()
+            state.update(values)
+            temporary = STATE_PATH + ".tmp"
+            with open(temporary, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=1)
+            os.replace(temporary, STATE_PATH)
     except Exception:
         log.exception("could not save settings")
 
@@ -2657,7 +2784,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  kbd{background:var(--card);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 6px;font:13px Consolas,monospace}
 </style></head><body><main>
 <h1>Hand Mouse</h1>
-<p class="lead">Your <b>main hand</b> is your right hand when both hands are in view, otherwise whichever hand is in view.</p>
+<p class="lead">The camera starts on with gestures off. Hold both fists for a second or use the tray's <b>Gestures on</b>. Your right hand is the main hand unless you change it.</p>
 <div class="grid">
  <div class="card"><h2>Move the cursor</h2><p>Point with the index finger of your main hand. Slow movements are precise, fast movements cover the whole screen.</p></div>
  <div class="card"><h2>Left click</h2><p>Touch your thumb to your <b>middle</b> fingertip. Keep touching and move to drag.</p></div>
@@ -2682,10 +2809,12 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Play / pause, tracks</h2><p>Fold <b>four fingers</b> and keep the <b>thumb out</b> (sideways is fine). Hold briefly (0.12 seconds), then <b>open the hand</b>: play / pause. For tracks, hold steady about a third of a second, then move <b>right</b>: next track, <b>left</b>: previous track. <b>One song per swipe.</b> Return near where you started and <b>wait there 0.5 seconds</b> before swiping again in either direction. Passing through the start does nothing; leaving it early restarts the wait. Holding it out does not skip more songs. After a track skip, opening does not also play / pause. Tucking the thumb cancels. Open fully between pinches and music gestures.</p></div>
 </div>
 <h3>Main hand</h3>
+<p><b>L-pose keys:</b> index up, thumb out sideways, middle/ring/little fingers folded. Hold briefly: physical <b>left hand = Backspace</b>, physical <b>right hand = Enter</b>. One press per pose; open/release to repeat. These keys follow the physical hand even if you change the main hand.</p>
 <p>Your <b>right hand</b> moves the cursor and clicks; the left one gives keyboard shortcuts (below). To use your <b>left hand</b> instead: show only the left hand and make a <b>fist twice</b> quickly. The app remembers it, also after a restart, until your right hand does the same.</p>
 <h3>Tray icon (next to the clock)</h3>
 <ul><li><b>Left-click</b>: stop / resume tracking, camera off (red badge = stopped, orange badge = gestures off).</li>
-<li><b>Right-click</b>: Camera &amp; log window, Gestures on, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size, Close.</li></ul>
+<li><b>Right-click</b>: Camera &amp; log window, Gestures on, Cursor sensitivity, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size, Close.</li>
+<li><b>Cursor sensitivity</b>: opens a live 25%-250% slider. 100% is normal; the value is remembered after restarting the app or PC.</li></ul>
 <h3>Tips</h3>
 <ul><li>Good light on your hands helps more than anything else.</li>
 <li>You can sit further back: small hands are read from a zoomed view, and movements scale with distance.</li>
@@ -2730,12 +2859,126 @@ def ensure_package(module: str, package: str) -> bool:
         return False
 
 
+class SensitivityWindow:
+    """A real slider opened from the tray; all Tk operations stay on its own UI thread."""
+    def __init__(self, get_value, on_change, on_save):
+        self.get_value, self.on_change, self.on_save = get_value, on_change, on_save
+        self.show_evt, self.stop_evt = threading.Event(), threading.Event()
+        self.lock = threading.Lock()
+        self.thread = None
+
+    def show(self):
+        with self.lock:
+            self.show_evt.set()
+            if self.thread is None or not self.thread.is_alive():
+                self.stop_evt.clear()
+                self.thread = threading.Thread(target=self._run, daemon=True, name="sensitivity")
+                self.thread.start()
+
+    def stop(self):
+        self.stop_evt.set()
+        if self.thread is not None and self.thread is not threading.current_thread():
+            self.thread.join(timeout=2.0)
+
+    def _run(self):
+        try:
+            self._run_ui()
+        finally:
+            # Tk variables/widgets form cycles. Collect them on their owning UI thread,
+            # not later on the camera/main thread (Tcl_AsyncDelete would abort the app).
+            import gc
+            gc.collect()
+
+    def _run_ui(self):
+        root = None
+        try:
+            import tkinter as tk
+            from tkinter import ttk
+            root = tk.Tk()
+            root.withdraw()
+            root.title("Hand Mouse - Cursor sensitivity")
+            root.resizable(False, False)
+            frame = ttk.Frame(root, padding=20)
+            frame.pack(fill="both", expand=True)
+            ttk.Label(frame, text="Cursor sensitivity", font=("Segoe UI", 13, "bold")).pack(anchor="w")
+            ttk.Label(frame, text="Lower: more hand movement. Higher: faster cursor.").pack(anchor="w", pady=(6, 14))
+            value = tk.DoubleVar(value=normalize_sensitivity(self.get_value()) * 100)
+            text = tk.StringVar(value=f"{value.get():.0f}%")
+            ttk.Label(frame, textvariable=text, font=("Segoe UI", 12)).pack()
+            pending = {"job": None, "value": None}
+
+            def flush():
+                if pending["job"] is not None:
+                    root.after_cancel(pending["job"])
+                    pending["job"] = None
+                if pending["value"] is not None:
+                    self.on_save(pending["value"])
+                    pending["value"] = None
+
+            def changed(raw):
+                gain = normalize_sensitivity(round(float(raw)) / 100)
+                text.set(f"{gain * 100:.0f}%")
+                self.on_change(gain)
+                pending["value"] = gain
+                if pending["job"] is not None:
+                    root.after_cancel(pending["job"])
+                pending["job"] = root.after(250, flush)
+
+            slider = ttk.Scale(frame, from_=25, to=250, variable=value, command=changed, length=340)
+            slider.pack(fill="x", pady=10)
+            ends = ttk.Frame(frame)
+            ends.pack(fill="x")
+            ttk.Label(ends, text="25% - slower").pack(side="left")
+            ttk.Label(ends, text="250% - faster").pack(side="right")
+            ttk.Label(frame, text="Changes apply immediately and are remembered.").pack(anchor="w", pady=(16, 12))
+
+            def hide():
+                flush()
+                root.withdraw()
+
+            def reset():
+                value.set(100)
+                changed(100)
+
+            buttons = ttk.Frame(frame)
+            buttons.pack(fill="x")
+            ttk.Button(buttons, text="Reset to 100%", command=reset).pack(side="left")
+            ttk.Button(buttons, text="Close", command=hide).pack(side="right")
+            root.protocol("WM_DELETE_WINDOW", hide)
+
+            def poll():
+                if self.stop_evt.is_set():
+                    flush()
+                    root.destroy()
+                    return
+                if self.show_evt.is_set():
+                    self.show_evt.clear()
+                    gain = normalize_sensitivity(self.get_value())
+                    value.set(gain * 100)
+                    text.set(f"{gain * 100:.0f}%")
+                    root.deiconify()
+                    root.lift()
+                    root.focus_force()
+                root.after(100, poll)
+
+            root.after(0, poll)
+            root.mainloop()
+        except Exception:
+            log.exception("could not open cursor sensitivity settings")
+        finally:
+            if root is not None:
+                try:
+                    root.destroy()
+                except Exception:
+                    pass
+
+
 class TrayIcon:
     """Icon in the Windows notification area (next to the clock).
     Left-click: stop / resume tracking.  Right-click: menu."""
 
     def __init__(self, is_paused, on_toggle, on_close, view_shown=None, on_view=None, on_relearn=None,
-                 gestures_off=None, on_gestures=None, debug_on=None, on_debug=None):
+                 gestures_off=None, on_gestures=None, debug_on=None, on_debug=None, on_sensitivity=None):
         self.is_paused, self.on_toggle, self.on_close = is_paused, on_toggle, on_close
         self.debug_on = debug_on or (lambda: False)
         self.on_debug = on_debug or (lambda: None)
@@ -2744,6 +2987,7 @@ class TrayIcon:
         self.view_shown = view_shown or (lambda: False)
         self.on_view = on_view or (lambda: None)
         self.on_relearn = on_relearn or (lambda: None)
+        self.on_sensitivity = on_sensitivity or (lambda: None)
         self.icon = None
         if not TRAY_ICON:
             return
@@ -2770,6 +3014,7 @@ class TrayIcon:
                 item(lambda it: "Resume tracking" if self.is_paused() else "Stop tracking",
                      lambda icon, it: self.on_toggle(), default=True),
                 item("Gestures help", lambda icon, it: open_help()),
+                item("Cursor sensitivity...", lambda icon, it: self.on_sensitivity()),
                 pystray.Menu.SEPARATOR,
                 item("Start with Windows", toggle_autostart, checked=lambda it: autostart_enabled()),
                 item("Re-learn my hand size", lambda icon, it: self.on_relearn()),
@@ -2778,7 +3023,7 @@ class TrayIcon:
                 pystray.Menu.SEPARATOR,
                 item("Close Hand Mouse", lambda icon, it: self.on_close()),
             )
-            self.icon = pystray.Icon("HandMouse", self.images["on"], self._title(), menu)
+            self.icon = pystray.Icon("HandMouse", self.images[self._state()], self._title(), menu)
             threading.Thread(target=self._run, daemon=True, name="tray").start()
         except Exception:
             log.exception("could not create the tray icon")
@@ -3398,7 +3643,7 @@ def draw_preview(cv2, frame, hands, engine, fps, paused, extra="", text_on_image
 
 # log lines that are a recognised gesture (any line containing one of these), and lines that are not
 DEBUG_EVENTS = ("click", "button", "scroll mode", "volume control", "second hand", "both fists", "gestures off",
-                "gestures on", "main hand", "swipe")
+                "gestures on", "main hand", "swipe", "hand L pose")
 DEBUG_IGNORE = ("second hand finder", "snapshot saved", "debug pictures", "diag ")
 DEBUG_TILE_W = 480              # width of one picture in the strip
 
@@ -3779,7 +4024,11 @@ def run(preview: bool) -> bool:
     engine = Engine(mouse, mouse.left, mouse.top, mouse.width, mouse.height,
                     ref_palm=state.get("ref_palm"), on_ref_learned=lambda v: save_state(ref_palm=v),
                     box_state=state.get("box"), main_side=state.get("main_side", "right"),
-                    on_main_side=lambda side: main_side_changed(side))
+                    on_main_side=lambda side: main_side_changed(side), gestures_on=False,
+                    cursor_sensitivity=state.get("cursor_sensitivity", 1.0))
+    log.info("startup: camera on, gestures off; hold both fists to enable gestures")
+    sensitivity_window = SensitivityWindow(lambda: engine.sensitivity, engine.set_sensitivity,
+                                           lambda v: save_state(cursor_sensitivity=v))
     def main_side_changed(side: str):
         save_state(main_side=side)
         beep(660)
@@ -3858,7 +4107,7 @@ def run(preview: bool) -> bool:
     tray = TrayIcon(pause_evt.is_set, toggle_pause, quit_evt.set,
                     view_shown=view_evt.is_set, on_view=toggle_view, on_relearn=relearn,
                     gestures_off=lambda: engine.gestures_off, on_gestures=toggle_gestures,
-                    debug_on=lambda: RECORDER.on, on_debug=toggle_debug)
+                    debug_on=lambda: RECORDER.on, on_debug=toggle_debug, on_sensitivity=sensitivity_window.show)
 
     def show_requested():
         view_evt.set()
@@ -4077,6 +4326,7 @@ def run(preview: bool) -> bool:
                 view.show(compose(frame))
     finally:
         engine.release_all(time.monotonic())
+        sensitivity_window.stop()
         RECORDER.wait()
         if cap is not None:
             cap.release()

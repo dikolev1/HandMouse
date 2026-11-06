@@ -61,6 +61,8 @@ holder = {}
 class SpyTray(orig_tray):
     def __init__(self, *a, **k):
         super().__init__(*a, **k); holder["t"] = self
+        assert self.gestures_off(), "run() must start with gestures off"
+        assert not self.is_paused(), "startup must leave the camera on"
 hm.TrayIcon = SpyTray
 res = {}
 def script():

@@ -2,6 +2,9 @@
 
 Control the Windows mouse with your hands through the laptop webcam. Everything runs locally.
 
+At every launch, the **camera is on and gestures are off** (orange tray badge). Hold both fists for a
+second, or right-click the tray icon and select **Gestures on**, to enable them.
+
 ## Start
 
 - Double-click the **Hand Mouse** icon on your desktop. It runs in the background; its icon appears next to
@@ -19,6 +22,9 @@ Control the Windows mouse with your hands through the laptop webcam. Everything 
   - **Gestures on**: tick / untick to turn gestures on or off (same as holding two fists).
   - **Stop / Resume tracking**: camera off / on. Resuming also turns gestures back on.
   - **Gestures help** opens a one-page summary of all gestures.
+  - **Cursor sensitivity...** opens a live slider from **25% to 250%** (100% = normal). Lower values need
+    more index-finger movement; higher values move the cursor faster. Changes are saved automatically and
+    remembered after restarting the app or PC. **Reset to 100%** restores normal sensitivity.
   - **Start with Windows** starts the app automatically when you log in.
   - **Re-learn my hand size**: hold your open hand up for a few seconds at your usual distance.
   - **Debug: save a picture of every gesture** (off by default, remembered): every gesture the app recognises
@@ -53,6 +59,11 @@ scroll, swipe windows, press buttons 4/5 and change the volume instead of giving
 | Gestures off / on | Hold **both** hands as fists for a second (beep first). While off, nothing reacts to your hands except two fists, which turn gestures back on. Holding the fists switches only once; open a hand (or take your hands out of view) before switching again. A full stop (camera off) is on the tray icon or Ctrl+Alt+H |
 
 ## Left hand: keyboard shortcuts
+
+**L-pose keys (both physical hands):** extend your index finger and thumb in an L, with the other three
+fingers folded, and hold briefly (about 0.35 seconds). **Left hand = Backspace; right hand = Enter.**
+Each hold presses once; open/release before repeating. These two keys keep their physical left/right
+meaning even if you change which hand controls the mouse. The right-hand pose holds the cursor still.
 
 Made with the other hand (the left one). A pinch acts when the thumb **lets go**, so a touch that slides onto two
 fingertips counts as the two. Each one is logged (pink) in the camera & log window and shown big in the picture.

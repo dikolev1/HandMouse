@@ -4,7 +4,7 @@ Written 2026-10-18 by the previous agent (Claude Code). Read this first, then CL
 2026-11-06 update: phone reports for Alt+Tab/media conflicts, play/pause, screenshot/copy/paste confusion and
 the on-screen keyboard are addressed in code with synthetic regression tests (test_phone_reports.py).
 See CLAUDE.md's 2026-11-06 entry for the rules and evidence. Webcam verification remains separate from tests.
-Enter gesture is explicitly deferred by the user. The older issue list below is historical context.
+The older issue list below is historical context; see the latest updates here and CLAUDE.md.
 User photo clarification (2026-11-06): music pose is FOUR FINGERS FOLDED + THUMB OUT (sideways valid).
 OPEN the hand to play/pause; move the same pose sideways for tracks. Tucking cancels. This supersedes
 all historical tuck-to-play descriptions below. A pinch owns the gesture until a clear open release,
@@ -17,9 +17,13 @@ User's new track rule: ONE SONG PER SWIPE, return near the fixed starting point 
 either direction. Distance scale is frozen per pose so turning the hand doesn't change sensitivity.
 Follow-up refinement: after a skip, return near the start and WAIT THERE 0.5 s before another swipe.
 Passing through does not rearm; leaving the zone or unreadable frames reset the wait. See TRACK_RETURN_HOLD.
-PENDING ONLY (do not implement yet): user supplied an L-shaped pose (index and thumb extended, other
-three fingers folded), left hand = Backspace, right hand = Enter. Start ONLY after the user explicitly
-approves the current one-song-per-swipe changes. No recognition code or tests for that pose have been added.
+User approved f88d1e3 and it was fast-forwarded to origin/main on 2026-11-06. New develop work adds:
+- L-shaped pose (index/thumb extended, other three folded): physical LEFT = Backspace, RIGHT = Enter.
+  Hold 0.35 s, one press per pose; release to repeat. Preserve physical sides if the main hand changes.
+- Every launch/reload starts camera ON, gestures OFF. Two fists or tray Gestures on enables them.
+- Tray Cursor sensitivity opens a real 25%-250% slider, 100% normal, saved as cursor_sensitivity.
+  It applies live and survives app/PC restart. See CLAUDE.md for UI threading and atomic state writes.
+These additions have synthetic/UI tests but still need the user's live gesture verification.
 First live trial of defe35c was NOT reliable: false Alt+Tab persisted on open hands. Follow-up removes
 the legacy 3D-only pinch start; labelled copy worked, screenshot worked once but open phases fired Alt+Tab.
 See CLAUDE.md for times and regression evidence; don't treat synthetic passes as live confirmation.
@@ -34,7 +38,7 @@ See CLAUDE.md for times and regression evidence; don't treat synthetic passes as
 - GitHub: https://github.com/dikolev1/HandMouse  (public; gh CLI is logged in as dikolev1)
 - Branches:
     develop = current work. The app folder is checked out on develop. Everything below is on develop.
-    main    = older; 11 commits behind develop (last: "Debug pictures: keep the newest 500").
+    main    = approved f88d1e3 (half-second return hold), promoted 2026-11-06. New features stay on develop.
   The user decides when develop goes to main ("push to main"). Do it as a fast-forward WITHOUT switching branches:
       git push origin develop:main
   (Never "git checkout main" in the app folder: it rewrites hand_mouse.py, and the running app restarts with the

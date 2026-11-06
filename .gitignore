@@ -1,6 +1,7 @@
 # Your own data and logs (never shared)
 hand_mouse.log*
 hand_mouse_state.json
+hand_mouse_state.json.tmp
 snapshots/
 setup_log.txt
 python_path.txt

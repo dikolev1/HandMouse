@@ -35,6 +35,15 @@ care that it works reliably; when unsure, measure before claiming something help
 
 ## Running
 
+- **Startup:** `run()` uses `gestures_on=False` every launch/reload. The camera still opens and tracks;
+  orange tray badge and two-fist wake-up work. Engine default stays on for direct model tests.
+- **Sensitivity:** tray -> Cursor sensitivity opens `SensitivityWindow` (Tk in its own lazy UI thread).
+  Range 25%-250%, `cursor_sensitivity` in saved state, 100% default. `Engine.set_sensitivity` updates only
+  cursor gain and never moves it at setting time. UI saves debounce 250 ms and flush on close/quit.
+  State writes use an RLock plus atomic replace so concurrent slider/camera/box/hand-side saves preserve
+  each other's fields. Tk cycles are collected on the owning UI thread after shutdown; otherwise
+  Tcl_AsyncDelete can abort Python. Standalone UI checks covered save, reopen, reset and clean shutdown.
+
 - **Normal use:** the desktop shortcut runs `pythonw.exe hand_mouse.py` (no console). There is a single instance,
   enforced by a named mutex. Double-clicking the shortcut while it runs opens the camera window of the running
   instance (named event `Local\HandMouseShowView`).
@@ -101,6 +110,15 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
 (camera off).
 
 ## Architecture (one frame)
+
+**Physical-hand L keys (approved 2026-11-06):** `is_l_pose` needs straight index, folded middle/ring/little,
+thumb extended sideways and separated from index. `LKeyPose` waits `L_POSE_HOLD` 0.35 s, fires once,
+and requires `L_POSE_RELEASE` 0.18 s to rearm. LEFT = Backspace, RIGHT = Enter even when main_side is
+left. Engine gives it priority over clicks, side buttons, scrolling, volume and second-hand shortcuts,
+freezes the main cursor/box, and releases held Alt BEFORE the new key. Held/briefly unreadable poses
+cannot repeat. `tests/test_l_pose_settings.py` covers mapping, no conflicts, short/long/repeated poses,
+startup off/two-fist wake, sensitivity gain and persisted/concurrent settings. The loop-window-drag test
+checks real run() starts with camera on and gestures off. Normal Stop/Resume still resumes gestures.
 
 1. **`Camera`** is a thread that always keeps only the newest frame. **`open_camera`** probes backends and
    modes (MSMF 1280x720 gives 30 fps here; DSHOW gave only 10) and caches the choice in state.
