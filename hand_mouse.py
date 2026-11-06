@@ -4,8 +4,8 @@ Hand Mouse - control the Windows mouse with your hands through the webcam.
   python hand_mouse.py --preview   window with the camera picture and live numbers (for testing/tuning)
   pythonw hand_mouse.py            runs in the background with no window
 
-Gestures with the main hand = your RIGHT hand (to use the left hand instead, show only the left hand and
-make a fist twice quickly - remembered until the right hand does the same):
+Gestures with the main hand = your RIGHT hand by default (two quick fist-open cycles with either
+hand swap the main hand, with one or both hands visible; remembered after restarting):
   cursor          follows the index fingertip of the main hand (across all monitors)
   left click      thumb touches middle fingertip
   right click     thumb touches ring fingertip
@@ -180,7 +180,7 @@ VOLUME_THUMB_KEEP = 0.18    # ...and it stays "out" until closer than this
 VOLUME_ENDS = 15            # degrees near straight up / straight down that already count as 100% / 0%
 VOLUME_SPEED = 1.5          # how fast the volume may change (1.5 = 150% per second), so it never jumps
 
-# Switch main hand: only the other hand in view, fist twice quickly (fold - open - fold - open).
+# Switch main hand: either hand, one or both visible, fist twice quickly (fold - open - fold - open).
 GRAB_MAX = 0.35             # each fist must be shorter than this (s)
 GRAB_GAP = 0.6              # the second fold must start within this time after opening (s)
 GRAB_OPEN = 1.5             # fingers count as open again when straighter than this
@@ -231,8 +231,8 @@ SECOND_HAND_GESTURES = False
 #   "index+middle"  thumb on both fingertips             "middle+ring"   thumb on both fingertips
 #   "little base"   palm to the camera, thumb across the palm on the base of the little finger (like button 5)
 #   "fist"          fist with the thumb tucked in, held KEY_FIST_HOLD (no need to open it), once per fist. Only
-#                   when it is the only fist (not two fists, not while the main hand scrolls). With this hand
-#                   alone in view it waits GRAB_MAX + 0.15 s: two quick fists switch the main hand instead
+#                   when it is the only fist (not two fists, not while the main hand scrolls). Hold about half a second;
+#                   two quick fist-open cycles with either hand switch the main hand instead
 #   "thumbs-up, hand open" four fingers folded, thumb out (at least PLAYPAUSE_HOLD), then open the hand
 #   "thumbs-up right" / "thumbs-up left"   thumb-out pose moved sideways, one song per swipe; return
 #                   near the starting point for 0.5 s to rearm either way. Opening does not play/pause
@@ -274,7 +274,7 @@ INDEX_HOLD_2D = 0.44        # a held index pinch tolerates this much picture dri
                             # (x palm length in the picture). The hand model's depth guess
                             # reads 0.5-0.65 in 3D (= apart) while the "OK" sign is clearly held and the hand
                             # moves to pick a window (debug pictures 2026-10-14)
-KEY_FIST_HOLD = 0.2         # the fist acts once it has been closed this long (s), without opening it
+KEY_FIST_HOLD = 0.5         # longer than a quick switch-hand fist, so double fists never press Esc
 KEY_THUMB_MIN = 0.3         # the thumb-out pose must be steady this long (s) before track movement counts
 PLAYPAUSE_HOLD = 0.12       # opening a clear music pose can toggle sooner; tracks still need KEY_THUMB_MIN
 THUMB_REAL_OUT = 0.5        # ...and the thumb must stick out at least this far at some point (thumb_out; a real
@@ -310,8 +310,8 @@ SWAP_HANDEDNESS = False     # set True if the app mixes up your left and right h
 # Which hand is which: by position when both hands are in view, otherwise by the hand model's left/right guess,
 # averaged over the time the hand is followed (tests: the guess is right in 96-100% of frames).
 RIGHT_HAND_LABEL = "Left"   # what the hand model calls your RIGHT hand in the mirrored camera picture
-# The main hand (cursor, clicks, all gestures) is your right hand. To use your LEFT hand instead: show only
-# the left hand and make a fist twice quickly; the right hand takes it back the same way. Remembered.
+# The main hand (cursor, clicks, all gestures) defaults to your right hand. To swap sides,
+# make a fist twice quickly with either hand, with one or both visible. Remembered.
 
 # Coloured light (a blue / RGB lamp, a screen glow): the hand model only knows natural skin colours, so a
 # blue-lit hand is often not found at all. When no hand is found for a moment, the app also tries the picture
@@ -862,7 +862,7 @@ class DoubleGrab:
     def update(self, h: Hand, now: float) -> bool:
         """True once when the double fold is complete."""
         e = sorted(h.ext)
-        folded = e[-1] < FIST_CURL
+        folded = is_fist(h)             # thumb-out music poses are not switch-hand fists
         opened = e[1] > GRAB_OPEN       # at least three fingers straight again
         if self.phase == "idle":
             if opened:
@@ -1834,6 +1834,7 @@ class Engine:
         self.main_side = main_side if main_side in ("right", "left") else "right"
         self.on_main_side = on_main_side
         self.switchers: dict[str, "DoubleGrab"] = {}
+        self.last_main_switch = -1e9
         self.ref_palm = ref_palm        # your normal hand size (learned)
         self.ref_samples: list[float] = []
         self.on_ref_learned = on_ref_learned
@@ -1941,6 +1942,7 @@ class Engine:
         self.swiper.reset()
         self.keys.reset()
         self.l_poses.clear()
+        self.switchers.clear()
         self.scroll_acc = self.hscroll_acc = 0.0
 
     # ---- which hand is which
@@ -1998,20 +2000,28 @@ class Engine:
             h.role = "main" if h is main else "second"
         return main
 
-    def _switch_main(self, hands: list[Hand], now: float):
-        """Only the other hand in view, fist twice quickly -> it becomes the main hand (remembered)."""
-        h = hands[0] if len(hands) == 1 else None
-        if h is None or h.hand_side is None or h.hand_side == self.main_side:
+    def _switch_main(self, hands: list[Hand], now: float) -> bool:
+        """Either hand's double quick fist toggles main side, with one or both hands visible."""
+        if now - self.last_main_switch < 0.6:
             self.switchers.clear()
-            return
-        sw = self.switchers.setdefault(h.key, DoubleGrab())
-        if not h.unsure and sw.update(h, now):
+            return False
+        visible = {h.key for h in hands}
+        self.switchers = {key: sw for key, sw in self.switchers.items() if key in visible}
+        fired = False
+        for h in hands:
+            sw = self.switchers.setdefault(h.key, DoubleGrab())
+            if not h.unsure and sw.update(h, now):
+                fired = True
+        if fired:
             self.switchers.clear()
-            self.main_side, self.main_key = h.hand_side, None
-            log.info("your %s hand is now the main hand (fist twice with the other hand to switch back)",
-                     h.hand_side.upper())
+            self.last_main_switch = now
+            self.main_side, self.main_key = ("left" if self.main_side == "right" else "right"), None
+            log.info("your %s hand is now the main hand (fist twice with either hand to swap back)",
+                     self.main_side.upper())
             if self.on_main_side:
-                self.on_main_side(h.hand_side)
+                self.on_main_side(self.main_side)
+            return True
+        return False
 
     # ---- distance
     def _k(self, h: Hand) -> float:
@@ -2172,8 +2182,13 @@ class Engine:
             if two_fists and STOP_WITH_TWO_FISTS:
                 rate = hrate = 0.0              # still holding the fists from the last stop
 
-        if not self.gestures_off:
-            self._switch_main(hands, now)
+        if not self.gestures_off and self._switch_main(hands, now):
+            self.release_all(now)
+            self.cursor.reset(keep_position=True)
+            self.last_tip = self.pending_tip = None
+            self.gesture = f"MAIN HAND: {self.main_side.upper()}"
+            self._status(hands, main, 0.0, frozen=True)
+            return                     # old hand roles cannot emit actions on the switching frame
         if self.gestures_off:                   # only two fists count now
             self.scroll_acc = self.hscroll_acc = 0.0
             self.scroll_marks, self.hscroll_marks = [], []
@@ -2376,8 +2391,8 @@ class Engine:
         if main is None:
             other = [h for h in hands if h.hand_side and h.hand_side != self.main_side]
             if other:
-                self.status.append(f"your {other[0].hand_side} hand is not the main hand - only it in view, "
-                                   "make a fist twice to make it the main hand")
+                self.status.append(f"your {other[0].hand_side} hand is not the main hand - "
+                                   "make a fist twice with either hand to swap")
             else:
                 self.status.append(f"waiting for your {self.main_side} hand (the main hand)")
         self.status.append(f"button: {self.clicks.pressed or '-'}   "
@@ -2819,12 +2834,12 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Undo / redo (Ctrl+Z / Ctrl+Y)</h2><p>Palm to the camera, thumb across the palm on the <b>base of the little finger</b> (like button 5). Once = undo, <b>twice quickly</b> = redo.</p></div>
  <div class="card"><h2>Print Screen</h2><p>Thumb on the <b>middle and ring</b> fingertips together.</p></div>
  <div class="card"><h2>Voice typing / keyboard</h2><p>Thumb on the <b>index and middle</b> fingertips together: voice typing on / off (Win+H). <b>Twice within 0.75 seconds</b>: the on-screen keyboard opens / closes; type on it with the right hand. A single pinch waits to see whether a second follows.</p></div>
- <div class="card"><h2>Esc</h2><p>Make a <b>fist</b> (thumb tucked in): Esc comes once it has been closed a moment, no need to open it. Only when it is the only fist in view (two fists = gestures off / on). With only the left hand in view hold it about half a second (two quick fists would make the left hand the main hand instead).</p></div>
+ <div class="card"><h2>Esc</h2><p>Make a <b>fist</b> (thumb tucked in): Esc comes once it has been closed about half a second, no need to open it. Only when it is the only fist in view (two fists = gestures off / on). Two quick fist-open cycles with either hand swap the main hand instead.</p></div>
  <div class="card"><h2>Play / pause, tracks</h2><p>Fold <b>four fingers</b> and keep the <b>thumb out</b> (sideways is fine). Hold briefly (0.12 seconds), then <b>open the hand</b>: play / pause. For tracks, hold steady about a third of a second, then move <b>right</b>: next track, <b>left</b>: previous track. <b>One song per swipe.</b> Return near where you started and <b>wait there 0.5 seconds</b> before swiping again in either direction. Passing through the start does nothing; leaving it early restarts the wait. Holding it out does not skip more songs. After a track skip, opening does not also play / pause. Tucking the thumb cancels. Open fully between pinches and music gestures.</p></div>
 </div>
 <h3>Main hand</h3>
 <p><b>L-pose keys:</b> index up, thumb out sideways, middle/ring/little fingers folded. Physical <b>left hand = Backspace</b>: deletes once, waits 0.5 seconds, then repeats while held; release to stop. Physical <b>right hand = Enter</b>: one press per pose, release to repeat. These keys follow the physical hand even if you change the main hand.</p>
-<p>Your <b>right hand</b> moves the cursor and clicks; the left one gives keyboard shortcuts (below). To use your <b>left hand</b> instead: show only the left hand and make a <b>fist twice</b> quickly. The app remembers it, also after a restart, until your right hand does the same.</p>
+<p>Your <b>right hand</b> moves the cursor and clicks; the left one gives keyboard shortcuts (below). Make a <b>fist twice</b> quickly with either hand to swap the main hand, with one or both hands visible. Open between fists and after the second fist. The app remembers the selected hand after a restart.</p>
 <h3>Tray icon (next to the clock)</h3>
 <ul><li><b>Left-click</b>: stop / resume tracking, camera off (red badge = stopped, orange badge = gestures off).</li>
 <li><b>Right-click</b>: Camera &amp; log window, Gestures on, Cursor sensitivity, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size, Close.</li>
@@ -4048,8 +4063,8 @@ def run(preview: bool) -> bool:
         beep(660)
         beep(990)
         if tray is not None:
-            tray.notify(f"Your {side} hand is now the main hand. To switch back, show only the other hand "
-                        "and make a fist twice.")
+            tray.notify(f"Your {side} hand is now the main hand. To switch back, use either hand "
+                        "and make a fist twice, with one or both hands visible.")
 
     ensure_model()
     sensor = HandSensor(create_landmarker(True, 2), create_landmarker(False, 1) if ZOOM_ENABLED else None,

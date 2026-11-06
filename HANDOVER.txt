@@ -17,7 +17,7 @@ User's new track rule: ONE SONG PER SWIPE, return near the fixed starting point 
 either direction. Distance scale is frozen per pose so turning the hand doesn't change sensitivity.
 Follow-up refinement: after a skip, return near the start and WAIT THERE 0.5 s before another swipe.
 Passing through does not rearm; leaving the zone or unreadable frames reset the wait. See TRACK_RETURN_HOLD.
-User approved f88d1e3 and it was fast-forwarded to origin/main on 2026-11-06. New develop work adds:
+User approved 6b78d14 and it was promoted to origin/main on 2026-11-06. That version includes:
 - L-shaped pose (index/thumb extended, other three folded): physical LEFT = Backspace, RIGHT = Enter.
   Hold 0.35 s for the first press. LEFT Backspace waits another 0.5 s, then repeats every 0.08 s while
   clearly held; release/lost tracking stops it. RIGHT Enter stays one press per pose. Preserve physical sides.
@@ -90,12 +90,12 @@ Right hand (main hand):
   cursor = index fingertip; left / right click = thumb on middle / ring tip; middle click = both; drag = hold;
   double-click = two pinches; button 4 = thumb on index tip ("OK"); button 5 = thumb across the palm onto the
   palm area under the ring / little finger; volume = thumbs-up held; scroll = fist moved up/down AND left/right
-  (one axis at a time); two fists 1 s = gestures off/on; left hand alone + fist twice = left becomes main hand.
+  (one axis at a time); two fists 1 s = gestures off/on; either hand + two quick fist-open cycles = swap main hand (one or both visible).
 Left hand (second hand) keyboard shortcuts, table SECOND_KEYS (pinches act when the thumb lets go):
   index tip = Alt+Tab (held 0.5 s: switcher stays open, move hand to pick; stops at first/last window)
   middle = Ctrl+C, ring = Ctrl+V, little-finger base (button-5 area) = Ctrl+Z (twice = Ctrl+Y)
   middle+ring = Print Screen, index+middle = Win+H voice typing (twice = on-screen keyboard)
-  fist (held 0.2 s, only when it is the only fist in view) = Esc
+  fist (held 0.5 s, only when it is the only fist in view) = Esc
   four fingers folded + thumb out, then OPEN = Play/Pause; same pose moved right/left = next/previous track
 Tray: Camera & log window, Gestures on, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size,
 "Debug: save a picture of every gesture", Close.
@@ -175,3 +175,8 @@ g) Ideas not done: shorter double-tap wait for Ctrl+Z (KEY_DOUBLE_WINDOW 0.45 s)
   gestures.html, YOLOv10n_hands.pt, python_path.txt, setup_log.txt.
 - Git commits end with a Co-Authored-By line for the agent (see recent commits for the format). The user's git
   identity is dikolev1.
+
+2026-11-06 main-hand switching: either hand can toggle sides with two quick fist-open cycles,
+with one or both visible. Per-track detection and a 0.6 s cooldown prevent duplicate swaps.
+Thumb-out music poses do not count. Esc now waits 0.5 s to avoid firing during quick fists.
+Switching releases held inputs and preserves cursor position. Both-fists hold remains gestures on/off.

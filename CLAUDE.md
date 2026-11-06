@@ -64,9 +64,8 @@ care that it works reliably; when unsure, measure before claiming something help
 
 The **main hand** is the user's **right hand**. All mouse gestures are made with the main hand. The other hand
 gives keyboard shortcuts (`SECOND_HAND_KEYS`, table below) and takes part in the two-fist on/off
-(`SECOND_HAND_GESTURES = False`; True gives it the main-hand gestures instead of the keys). To make the **left** hand the main hand:
-show only the left hand and make a fist twice quickly. This is remembered in state (`main_side`) until the right
-hand does the same.
+(`SECOND_HAND_GESTURES = False`; True gives it the main-hand gestures instead of the keys). To swap the main hand, make two quick fist-open cycles with either hand, with one or both visible.
+This is remembered in state (`main_side`). Simultaneous gestures swap once; the switch frame releases held actions.
 
 | Action | Gesture | Key settings / code |
 |---|---|---|
@@ -80,7 +79,7 @@ hand does the same.
 | Volume | Thumbs-up held `VOLUME_HOLD` 0.45 s; thumb up = 100%, turned to down = 0%; changes at most 150%/s | `ThumbVolume`, `thumb_out`, `thumb_angle`, `WinVolume` (pycaw) |
 | Scroll | Fist (thumb tucked) and move up/down, or left/right (`HSCROLL`, horizontal wheel), from where it closed. Only the axis moved further scrolls (`FistScroll.axis`, switches when the other is 1.5x bigger); sideways distance is converted to height units (`/ aspect`) so the same real move scrolls the same | `FistScroll`, `SCROLL_*`, `HSCROLL_*`, `tests/test_hscroll.py` |
 | Gestures off / on | Both hands as fists for `STOP_HOLD` 1 s; switches once per hold; open a hand (or hide hands) `STOP_REARM` 0.4 s to switch again | `Engine` two-fist block, `_rearm` |
-| Switch main hand | Only the non-main hand in view, fist twice quickly | `_switch_main`, `DoubleGrab` |
+| Switch main hand | Either hand, one or both visible, fist twice quickly; toggles sides once | `_switch_main`, `DoubleGrab` |
 | Window swipe | Disabled (it was second-hand-only); code is still there behind `SECOND_HAND_GESTURES` | `Swiper` |
 
 **Second-hand keyboard shortcuts** (`SecondHandKeys`, map in `SECOND_KEYS`, tests in `test_second_keys.py`).
@@ -100,7 +99,7 @@ is clearly wide open (so "twice" taps don't merge); 2 fist frames in a row cance
 | Thumb on little-finger base | Ctrl+Z; twice Ctrl+Y | Same spot test as button 5 |
 | Thumb on middle + ring | Print Screen | |
 | Thumb on index + middle | Win+H (voice typing); twice: on-screen keyboard | `WinMouse.toggle_keyboard`: `osk.exe` via `os.startfile` (no admin needed), closed with `WM_SYSCOMMAND/SC_CLOSE` to `OSKMainClass` (both checked on the laptop) |
-| Fist (held `KEY_FIST_HOLD` 0.2 s) | Esc | Acts while closed, once per fist; re-armed when two fingers are straight again. Only the only fist in view (`two_fists` blocks it, incl. a right-hand scroll fist). Alone in view (no main hand) waits `GRAB_MAX`+0.15 s, since two quick fists are the main-hand switch. Was "on opening" until 2026-10-15; the user asked for it on closing |
+| Fist (held `KEY_FIST_HOLD` 0.5 s) | Esc | Acts while closed, once per fist; re-armed when two fingers are straight again. Only the only fist in view (`two_fists` blocks it, incl. a right-hand scroll fist). Two quick fist-open cycles with either hand switch the main hand instead. Was "on opening" until 2026-10-15; the user asked for it on closing |
 | Four fingers folded, thumb out (>= `PLAYPAUSE_HOLD` 0.12 s and peak >= `THUMB_REAL_OUT` 0.5), then open the hand | Play/pause | User clarified with a photo 2026-11-06: sideways thumb-out is valid; OPENING (at least 3 fingers straight) acts, not tucking the thumb. At most once per `PLAYPAUSE_REPEAT` 1.5 s. Tucking cancels without Esc. Repeat/peak guards still protect resting hands. Track arming remains 0.3 s |
 | Thumb-out pose moved right / left | Next / previous track | Steady `KEY_THUMB_MIN`, smoothed x. One skip when distance from the fixed origin reaches `TRACK_STEP` 0.12 x max(hand scale, 0.8), frozen when arming. `thumb_ready` stays false until raw AND smoothed x stay within `TRACK_RETURN` 0.4 of that distance for `TRACK_RETURN_HOLD` 0.5 s continuously. Leaving the zone or unreadable frames reset `thumb_return_since`. Either direction can then act. `TRACK_REPEAT` 0.4 s is an extra guard. Never advance the origin during the pose. Opening after any skip does not also play/pause |
 

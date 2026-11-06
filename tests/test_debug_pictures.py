@@ -56,7 +56,7 @@ check("left-hand Ctrl+C -> one picture (touch line and action line together)",
       len(files) == 1 and "Ctrl+C" in files[0], files)
 shutil.rmtree(folder)
 
-brush = T.START + N(2, T.both("index")) + N(8, T.both("fist")) + T.REST
+brush = T.START + N(2, T.both("index")) + N(12, T.both("fist")) + T.REST
 folder, files, rec = run(brush)
 check("cancelled touch and Esc are both caught", any("cancelled" in f for f in files) and any("Esc" in f for f in files),
       files)

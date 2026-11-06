@@ -39,8 +39,8 @@ second, or right-click the tray icon and select **Gestures on**, to enable them.
 ## Gestures
 
 Your **main hand** is your **right hand**: it moves the cursor and makes the mouse gestures. The left hand gives
-keyboard shortcuts (next section) and takes part in the two-fist on / off. To use your **left hand** as the main hand: show only the left hand and make a
-fist twice quickly. This is remembered (also after a restart) until the right hand does the same. The app tells
+keyboard shortcuts (next section) and takes part in the two-fist on / off. Make a fist twice quickly with **either hand** to swap the main hand, with one or both hands visible.
+Open between fists and after the second fist. This is remembered after a restart. Simultaneous gestures swap only once. The app tells
 the hands apart by position when both are in view, otherwise by the hand model's left / right guess averaged over
 time (`SWAP_HANDEDNESS = True` if it mixes them up). `SECOND_HAND_GESTURES = True` makes the other hand
 scroll, swipe windows, press buttons 4/5 and change the volume instead of giving keyboard shortcuts.
@@ -78,7 +78,7 @@ fingertips counts as the two. Each one is logged (pink) in the camera & log wind
 | Ctrl+Z (undo) / Ctrl+Y (redo) | Palm to the camera, thumb across the palm on the base of the little finger (like button 5). Once = undo, twice quickly = redo. A single one waits about half a second to see whether a second follows |
 | Print Screen | Thumb on the middle and ring fingertips together |
 | Voice typing / on-screen keyboard | Thumb on the index and middle fingertips together: Windows voice typing on / off (Win+H). Twice quickly: the on-screen keyboard opens or closes; type on it with the right hand |
-| Esc | Make a fist (thumb tucked in). Esc comes after 0.2 s while the fist is still closed, once per fist (open the hand before the next one). Only when it is the only fist in view: two fists are gestures off / on, and a right-hand fist is scrolling. With only the left hand in view, hold the fist about half a second, because two quick fists make the left hand the main hand instead |
+| Esc | Make a fist (thumb tucked in). Esc comes after 0.5 s while the fist is still closed, once per fist (open the hand before the next one). Only when it is the only fist in view: two fists are gestures off / on, and a right-hand fist is scrolling. Two quick fist-open cycles with either hand swap the main hand instead |
 | Play / pause | Fold four fingers, keep the thumb clearly out (sideways is fine), hold briefly (0.12 seconds), then **open the hand**. It acts on opening, once, at most once per 1.5 s. Tucking the thumb into a fist cancels |
 | Next / previous track | Make the same folded-fingers, thumb-out pose, hold it still about a third of a second, then move it right / left. **One song per swipe**, even if you move further or hold the hand out. Return near where you started and **wait there 0.5 seconds**, then swipe in **either direction**. Passing through the start does nothing; leaving early restarts the wait. Both directions use the same fixed distance. Opening after skipping does not also play / pause |
 

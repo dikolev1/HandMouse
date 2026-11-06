@@ -1,7 +1,7 @@
-import os as _os, sys as _sys, tempfile as _tempfile
+import os as _os, sys as _sys
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
 _sys.path[:0] = [_HERE, _os.path.dirname(_HERE)]   # tests/ and the app folder
-import sys, io, contextlib, random
+import io, contextlib, random
 pass
 with contextlib.redirect_stdout(io.StringIO()):
     import test_core as V
@@ -31,7 +31,7 @@ check("left main, both hands in view: the left hand clicks", clicks(m) == [("lef
 m, e, saved, mv = run(N(20, lambda t: [L(), R()]) + N(8, lambda t: [L(), R(pinch='m')]) + N(10, lambda t: [L(), R()]), side="left")
 check("...and the right hand doesn't", clicks(m) == [], clicks(m))
 m, e, saved, mv = run(N(10, lambda t: R()) + dfist(R) + N(10, lambda t: R()))
-check("the main hand making a fist twice changes nothing", saved == [] and e.main_side == "right", saved)
+check("the main hand making a fist twice toggles to left", saved == ["left"] and e.main_side == "left", saved)
 rnd = random.Random(2)
 def flicky(t):
     h = R(); h.label = "Left" if rnd.random() < 0.08 else "Right"; return h
@@ -39,5 +39,5 @@ m, e, saved, mv = run(N(10, lambda t: R()) + N(200, flicky) + N(8, lambda t: R(p
 check("right hand whose left/right guess is wrong 8% of the time stays main", clicks(m) == [("left", "down"), ("left", "up")] and e.main_side == "right", clicks(m))
 both = lambda **k: [L(**k), R()]
 m, e, saved, mv = run(N(10, lambda t: [L(), R()]) + N(4, lambda t: both(fist=True)) + N(4, lambda t: both()) + N(4, lambda t: both(fist=True)) + N(8, lambda t: both()))
-check("fist twice with the left hand while both hands are in view -> no switch", saved == [], saved)
+check("fist twice with the left hand while both hands are in view -> one switch", saved == ["left"], saved)
 print("ALL MAINSIDE OK")
