@@ -93,7 +93,7 @@ is clearly wide open (so "twice" taps don't merge); 2 fist frames in a row cance
 | Thumb on index + middle | Win+H (voice typing); twice: on-screen keyboard | `WinMouse.toggle_keyboard`: `osk.exe` via `os.startfile` (no admin needed), closed with `WM_SYSCOMMAND/SC_CLOSE` to `OSKMainClass` (both checked on the laptop) |
 | Fist (held `KEY_FIST_HOLD` 0.2 s) | Esc | Acts while closed, once per fist; re-armed when two fingers are straight again. Only the only fist in view (`two_fists` blocks it, incl. a right-hand scroll fist). Alone in view (no main hand) waits `GRAB_MAX`+0.15 s, since two quick fists are the main-hand switch. Was "on opening" until 2026-10-15; the user asked for it on closing |
 | Four fingers folded, thumb out (>= `PLAYPAUSE_HOLD` 0.12 s and peak >= `THUMB_REAL_OUT` 0.5), then open the hand | Play/pause | User clarified with a photo 2026-11-06: sideways thumb-out is valid; OPENING (at least 3 fingers straight) acts, not tucking the thumb. At most once per `PLAYPAUSE_REPEAT` 1.5 s. Tucking cancels without Esc. Repeat/peak guards still protect resting hands. Track arming remains 0.3 s |
-| Thumb-out pose moved right / left | Next / previous track | Steady `KEY_THUMB_MIN`, smoothed x. One skip when distance from the fixed origin reaches `TRACK_STEP` 0.12 x max(hand scale, 0.8), frozen when arming. `thumb_ready` then stays false until returning within `TRACK_RETURN` 0.4 of that distance; either direction can act after return. `TRACK_REPEAT` 0.4 s is an additional guard. Never advance the origin during the pose. Opening after any skip does not also play/pause |
+| Thumb-out pose moved right / left | Next / previous track | Steady `KEY_THUMB_MIN`, smoothed x. One skip when distance from the fixed origin reaches `TRACK_STEP` 0.12 x max(hand scale, 0.8), frozen when arming. `thumb_ready` stays false until raw AND smoothed x stay within `TRACK_RETURN` 0.4 of that distance for `TRACK_RETURN_HOLD` 0.5 s continuously. Leaving the zone or unreadable frames reset `thumb_return_since`. Either direction can then act. `TRACK_REPEAT` 0.4 s is an extra guard. Never advance the origin during the pose. Opening after any skip does not also play/pause |
 
 There are also hotkeys (Ctrl+Alt+H stop/resume, Ctrl+Alt+C re-learn hand size, Ctrl+Alt+Q quit) and a tray
 menu: Camera & log window, Gestures on, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size,
@@ -250,6 +250,10 @@ Close. In the tray icon an orange badge means gestures are off (camera on), and 
   skip once; return within 40% of the trigger distance rearms without itself skipping. The old advancing
   anchor and one-direction lock are removed. `tests/test_track_recenter.py` covers long swipes both ways,
   approximate return, partial return, repeat/reverse after return, and changing scale readings.
+  Follow-up: passing through the start rearmed too soon and skipped backwards. User requested a 0.5 s
+  wait near the start. `thumb_return_since` now requires continuous readable residence in the zone, with
+  both raw and smoothed positions inside; leaving or an uncertain frame resets the full wait. Regression
+  tests cover passing through, short waits, interrupted waits, and valid half-second-or-longer returns.
 - **Left copy / paste read as Win+H / Print Screen (2026-10-16).** Debug picture: thumb on the middle tip, 3D
   index 0.35 < middle 0.40 (so "index+middle"), picture middle 0.14 / index 0.45. Initially fixed with per-frame
   min(3D, picture); superseded by `second_distances` on 2026-11-06 (see above). The touch

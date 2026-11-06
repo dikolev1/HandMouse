@@ -35,12 +35,12 @@ class TrackRecenter(unittest.TestCase):
                 self.assertEqual(events, [("keys", (T.K[action],))])
 
     def test_return_then_swipe_same_direction(self):
-        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .45) + [(.45, 5, 1.0)]
+        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .45) + [(.45, 12, 1.0)]
                                  + self.move(.45, .64))
         self.assertEqual(events, [("keys", (T.K["nexttrack"],))] * 2)
 
     def test_return_then_swipe_opposite_direction(self):
-        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .45) + [(.45, 5, 1.0)]
+        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .45) + [(.45, 12, 1.0)]
                                  + self.move(.45, .26))
         self.assertEqual(events, [("keys", (T.K["nexttrack"],)), ("keys", (T.K["prevtrack"],))])
 
@@ -49,8 +49,23 @@ class TrackRecenter(unittest.TestCase):
                                  + self.move(.55, .72))
         self.assertEqual(events, [("keys", (T.K["nexttrack"],))])
 
+    def test_passing_through_start_does_not_reverse(self):
+        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .26, 16) + [(.26, 16, 1.0)])
+        self.assertEqual(events, [("keys", (T.K["nexttrack"],))])
+
+    def test_short_return_wait_does_not_rearm(self):
+        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .45, 8) + [(.45, 2, 1.0)]
+                                 + self.move(.45, .26, 8) + [(.26, 16, 1.0)])
+        self.assertEqual(events, [("keys", (T.K["nexttrack"],))])
+
+    def test_leaving_start_resets_the_wait(self):
+        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .45, 8)
+                                 + [(.45, 4, 1.0), (.55, 4, 1.0), (.45, 4, 1.0)]
+                                 + self.move(.45, .26, 8) + [(.26, 12, 1.0)])
+        self.assertEqual(events, [("keys", (T.K["nexttrack"],))])
+
     def test_return_near_start_is_enough(self):
-        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .48) + [(.48, 8, 1.0)]
+        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .48) + [(.48, 12, 1.0)]
                                  + self.move(.48, .26))
         self.assertEqual(events, [("keys", (T.K["nexttrack"],)), ("keys", (T.K["prevtrack"],))])
 

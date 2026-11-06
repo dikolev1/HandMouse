@@ -30,7 +30,7 @@ Keyboard shortcuts with the other hand (your LEFT hand); pinches act when the th
   voice typing    thumb on index AND middle fingertips (Win+H); twice within 0.75 s = keyboard on / off
   Esc             make a fist (the only fist in view)
   play / pause    four fingers folded, thumb out; hold briefly, then OPEN the hand
-  next / previous thumb-out pose moved right / left: one song, return near start to swipe again either way
+  next / previous thumb-out pose moved right / left: one song, return near start and wait 0.5 s to rearm
 
 Tray icon (next to the clock): left-click stops / resumes tracking; right-click for the menu
 (Camera & log window, Gestures on, Stop / Resume tracking, Gestures help, Start with Windows, Re-learn my hand size,
@@ -230,7 +230,7 @@ SECOND_HAND_GESTURES = False
 #                   alone in view it waits GRAB_MAX + 0.15 s: two quick fists switch the main hand instead
 #   "thumbs-up, hand open" four fingers folded, thumb out (at least PLAYPAUSE_HOLD), then open the hand
 #   "thumbs-up right" / "thumbs-up left"   thumb-out pose moved sideways, one song per swipe; return
-#                   near the starting point to rearm either way. Opening afterwards does not play/pause
+#                   near the starting point for 0.5 s to rearm either way. Opening does not play/pause
 #   "... twice"     the same gesture twice quickly. The single one then waits KEY_DOUBLE_WINDOW to be sure.
 # Keys: ctrl, alt, shift, win, a-z, 0-9, f1-f24, enter, esc, tab, space, backspace, delete, insert, home, end,
 # pageup, pagedown, up, down, left, right, printscreen, playpause, nexttrack, prevtrack, mute, joined with +.
@@ -278,6 +278,7 @@ THUMB_REAL_OUT = 0.5        # ...and the thumb must stick out at least this far 
 PLAYPAUSE_REPEAT = 1.5      # at least this long (s) between two play / pause
 TRACK_STEP = 0.12           # one track when the hand leaves this radius around the music pose's starting point
 TRACK_RETURN = 0.4          # return within this fraction of TRACK_STEP to rearm a swipe in either direction
+TRACK_RETURN_HOLD = 0.5     # stay near the original start continuously this long before another swipe
 TRACK_REPEAT = 0.4          # at least this long (s) between two track skips
 
 # Window swipe: with both hands in view, move the SECOND hand (the left one) quickly left or right.
@@ -1418,6 +1419,7 @@ class SecondHandKeys:
         self.thumb_real = -1e9          # last time a thumbs-up held at least KEY_THUMB_MIN was seen
         self.thumb_ready, self.thumb_skip = True, -1e9  # one skip, then return to the fixed start point
         self.thumb_step = None          # freeze the distance scale when the pose arms (same both ways)
+        self.thumb_return_since = None  # continuous dwell near the start after a skip
         self.thumb_sx = None            # smoothed thumbs-up position (x)
         self.thumb_peak = 0.0           # how far the thumb stuck out during this thumbs-up (thumb_out)
         self.media_blocked = False     # a pinch owns the hand until a clear open-hand release
@@ -1455,8 +1457,10 @@ class SecondHandKeys:
                 self._end_touch(now, fire=False)        # hand gone mid-touch: let go, don't act
             self.fist_since = self.thumb_since = None
             self.media_open_since = None
+            self.thumb_return_since = None
             return
         if h.unsure:                    # finger shapes unreadable this frame: keep the state
+            self.thumb_return_since = None  # unreadable frames do not count as waiting at the start
             if self.touching:
                 self.last_raw = now
             return
@@ -1585,7 +1589,7 @@ class SecondHandKeys:
     # ---- fist and thumbs-up
     def _thumbs_up(self, h: Hand, now: float, k: float = 1.0):
         """Four fingers folded, thumb out, then open -> play/pause. One track per sideways swipe;
-        return near the fixed starting point to rearm either direction.
+        return near the fixed starting point for 0.5 s to rearm either direction.
         A pinch cannot become media while it is misread during movement; open the hand first.
         """
         on = self.thumb_since is not None
@@ -1607,6 +1611,7 @@ class SecondHandKeys:
             if not on:
                 self.thumb_since, self.thumb_x, self.thumb_moved, self.thumb_ready = now, None, False, True
                 self.thumb_step = None
+                self.thumb_return_since = None
                 self.thumb_sx, self.thumb_peak = x, out
                 return
             self.thumb_sx = 0.5 * x + 0.5 * self.thumb_sx       # smoothed: a jittery hand doesn't skip
@@ -1624,13 +1629,22 @@ class SecondHandKeys:
             dx = self.thumb_sx - self.thumb_x
             d = 1 if dx > 0 else -1
             if not self.thumb_ready:
-                if abs(dx) <= step * TRACK_RETURN:
-                    self.thumb_ready = True    # returning only rearms; it never skips a song itself
+                zone = step * TRACK_RETURN
+                if abs(dx) <= zone and abs(x - self.thumb_x) <= zone:
+                    if self.thumb_return_since is None:
+                        self.thumb_return_since = now
+                    elif now - self.thumb_return_since >= TRACK_RETURN_HOLD:
+                        self.thumb_ready = True
+                        self.thumb_return_since = None
+                else:
+                    self.thumb_return_since = None  # leaving the zone restarts the full wait
                 return
             if abs(dx) >= step and now - self.thumb_skip >= TRACK_REPEAT:
                 self.thumb_moved, self.thumb_ready, self.thumb_skip = True, False, now
+                self.thumb_return_since = None
                 self._do("thumbs-up right" if d > 0 else "thumbs-up left")
         elif on:
+            self.thumb_return_since = None
             opened = sorted(h.ext)[1] > SIDE_STRAIGHT  # at least three fingers open, not one flickering tip
             if (opened and not self.thumb_moved
                     and self.thumb_last - self.thumb_since >= PLAYPAUSE_HOLD and self.thumb_peak >= THUMB_REAL_OUT):
@@ -2665,7 +2679,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Print Screen</h2><p>Thumb on the <b>middle and ring</b> fingertips together.</p></div>
  <div class="card"><h2>Voice typing / keyboard</h2><p>Thumb on the <b>index and middle</b> fingertips together: voice typing on / off (Win+H). <b>Twice within 0.75 seconds</b>: the on-screen keyboard opens / closes; type on it with the right hand. A single pinch waits to see whether a second follows.</p></div>
  <div class="card"><h2>Esc</h2><p>Make a <b>fist</b> (thumb tucked in): Esc comes once it has been closed a moment, no need to open it. Only when it is the only fist in view (two fists = gestures off / on). With only the left hand in view hold it about half a second (two quick fists would make the left hand the main hand instead).</p></div>
- <div class="card"><h2>Play / pause, tracks</h2><p>Fold <b>four fingers</b> and keep the <b>thumb out</b> (sideways is fine). Hold briefly (0.12 seconds), then <b>open the hand</b>: play / pause. For tracks, hold steady about a third of a second, then move <b>right</b>: next track, <b>left</b>: previous track. <b>One song per swipe.</b> Bring the hand back near where you started before swiping again in either direction. Holding it out does not skip more songs. After a track skip, opening does not also play / pause. Tucking the thumb cancels. Open fully between pinches and music gestures.</p></div>
+ <div class="card"><h2>Play / pause, tracks</h2><p>Fold <b>four fingers</b> and keep the <b>thumb out</b> (sideways is fine). Hold briefly (0.12 seconds), then <b>open the hand</b>: play / pause. For tracks, hold steady about a third of a second, then move <b>right</b>: next track, <b>left</b>: previous track. <b>One song per swipe.</b> Return near where you started and <b>wait there 0.5 seconds</b> before swiping again in either direction. Passing through the start does nothing; leaving it early restarts the wait. Holding it out does not skip more songs. After a track skip, opening does not also play / pause. Tucking the thumb cancels. Open fully between pinches and music gestures.</p></div>
 </div>
 <h3>Main hand</h3>
 <p>Your <b>right hand</b> moves the cursor and clicks; the left one gives keyboard shortcuts (below). To use your <b>left hand</b> instead: show only the left hand and make a <b>fist twice</b> quickly. The app remembers it, also after a restart, until your right hand does the same.</p>

@@ -15,6 +15,8 @@ lost Alt state before stepping. It keeps the user's exact tap/hold/left-right/en
 Latest confirmation: play/pause, song switching and Alt+Tab work; left-hand gesture conflicts are resolved.
 User's new track rule: ONE SONG PER SWIPE, return near the fixed starting point before another swipe in
 either direction. Distance scale is frozen per pose so turning the hand doesn't change sensitivity.
+Follow-up refinement: after a skip, return near the start and WAIT THERE 0.5 s before another swipe.
+Passing through does not rearm; leaving the zone or unreadable frames reset the wait. See TRACK_RETURN_HOLD.
 PENDING ONLY (do not implement yet): user supplied an L-shaped pose (index and thumb extended, other
 three fingers folded), left hand = Backspace, right hand = Enter. Start ONLY after the user explicitly
 approves the current one-song-per-swipe changes. No recognition code or tests for that pose have been added.
