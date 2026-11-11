@@ -237,3 +237,12 @@ Use Camera & log window to identify the feed. The choice persists as camera_inde
 Choosing a different camera restarts the app with gestures off and clears the old mode,
 probe time and hand calibration. Unavailable cameras can be changed from the tray even
 while opening fails. Camera profiles include their index; legacy profiles apply only to index 0.
+
+Windows mouse compatibility (1.0.2): movement, buttons and both wheel axes use checked
+SendInput with the full native INPUT union. Absolute movement includes VIRTUALDESK for
+negative monitor origins. Rejected delivery is logged at most once per five seconds;
+there is no fallback that could duplicate a click. This improves input diagnostics and
+uses a consistent input stream for overlays; it does not bypass UIPI, UIAccess or secure
+desktop restrictions. Real OSK/Snipping Tool verification is still required. Recent logs
+also showed 6-8 tracking FPS and long pinches; delivery acceptance does not prove a target
+processed an event. Do not claim legacy mouse APIs alone caused the reported problem.

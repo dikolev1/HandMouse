@@ -71,7 +71,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.0.1"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.0.2"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60
@@ -2506,6 +2506,31 @@ def alt_tab_windows() -> list:
     return found
 
 
+def windows_input_type():
+    """Full Windows INPUT union: mouse-only unions have the wrong size on 32-bit Python."""
+    import ctypes as c
+    from ctypes import wintypes as w
+
+    class Mouse(c.Structure):
+        _fields_ = [("dx", w.LONG), ("dy", w.LONG), ("mouseData", w.DWORD),
+                    ("dwFlags", w.DWORD), ("time", w.DWORD), ("dwExtraInfo", c.c_size_t)]
+
+    class Keyboard(c.Structure):
+        _fields_ = [("wVk", w.WORD), ("wScan", w.WORD), ("dwFlags", w.DWORD),
+                    ("time", w.DWORD), ("dwExtraInfo", c.c_size_t)]
+
+    class Hardware(c.Structure):
+        _fields_ = [("uMsg", w.DWORD), ("wParamL", w.WORD), ("wParamH", w.WORD)]
+
+    class Event(c.Union):
+        _fields_ = [("mi", Mouse), ("ki", Keyboard), ("hi", Hardware)]
+
+    class Input(c.Structure):
+        _anonymous_ = ("event",)
+        _fields_ = [("type", w.DWORD), ("event", Event)]
+    return Input
+
+
 class WinMouse:
     _FLAGS = {"left": (0x0002, 0x0004), "right": (0x0008, 0x0010), "middle": (0x0020, 0x0040),
               "x1": (0x0080, 0x0100), "x2": (0x0080, 0x0100)}     # x1 = mouse button 4, x2 = button 5
@@ -2529,6 +2554,11 @@ class WinMouse:
             except Exception:
                 pass
         self.u = ctypes.windll.user32
+        self.Input = windows_input_type()
+        self.send_input = ctypes.WinDLL("user32", use_last_error=True).SendInput
+        self.send_input.argtypes = [ctypes.c_uint, ctypes.POINTER(self.Input), ctypes.c_int]
+        self.send_input.restype = ctypes.c_uint
+        self.input_error_at = -1e9
         self.left, self.top, self.width, self.height = self.bounds()
         try:
             self.double_click_time = max(self.u.GetDoubleClickTime() / 1000.0, 0.2)   # Windows setting
@@ -2542,17 +2572,42 @@ class WinMouse:
         return (self.u.GetSystemMetrics(76), self.u.GetSystemMetrics(77),
                 self.u.GetSystemMetrics(78), self.u.GetSystemMetrics(79))
 
+    def _send_mouse(self, flags: int, data: int = 0, x: int = 0, y: int = 0) -> bool:
+        import ctypes
+        packet = self.Input()
+        packet.type = 0                  # INPUT_MOUSE
+        packet.mi.dx, packet.mi.dy = x, y
+        packet.mi.mouseData = data & 0xFFFFFFFF
+        packet.mi.dwFlags = flags
+        ctypes.set_last_error(0)
+        sent = self.send_input(1, ctypes.byref(packet), ctypes.sizeof(packet))
+        if sent != 1:
+            now = time.monotonic()
+            if now - self.input_error_at >= 5:
+                self.input_error_at = now
+                log.warning("Windows rejected mouse input (flags %#x, error %d). "
+                            "Check target permissions/UIAccess or the active desktop; "
+                            "SendInput cannot identify UIPI as the cause.", flags, ctypes.get_last_error())
+            return False
+        return True
+
     def move(self, x: float, y: float):
-        self.u.SetCursorPos(int(round(x)), int(round(y)))
+        # Send real movement events as well as clicks: Windows overlays/drag selection
+        # must see the same input stream. Normalize across the entire virtual desktop.
+        left, top = self.u.GetSystemMetrics(76), self.u.GetSystemMetrics(77)
+        width, height = self.u.GetSystemMetrics(78), self.u.GetSystemMetrics(79)
+        nx = round(min(max((x - left) / max(width - 1, 1), 0), 1) * 65535)
+        ny = round(min(max((y - top) / max(height - 1, 1), 0), 1) * 65535)
+        self._send_mouse(0x0001 | 0x8000 | 0x4000, x=nx, y=ny)  # MOVE | ABSOLUTE | VIRTUALDESK
 
     def button(self, name: str, down: bool):
-        self.u.mouse_event(self._FLAGS[name][0 if down else 1], 0, 0, self._XDATA.get(name, 0), 0)
+        self._send_mouse(self._FLAGS[name][0 if down else 1], self._XDATA.get(name, 0))
 
     def wheel(self, delta: int):
-        self.u.mouse_event(0x0800, 0, 0, int(delta), 0)
+        self._send_mouse(0x0800, int(delta))
 
     def hwheel(self, delta: int):
-        self.u.mouse_event(0x01000, 0, 0, int(delta), 0)     # MOUSEEVENTF_HWHEEL, positive = right
+        self._send_mouse(0x01000, int(delta))     # MOUSEEVENTF_HWHEEL, positive = right
 
     @property
     def volume(self):
