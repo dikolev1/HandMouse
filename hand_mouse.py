@@ -71,7 +71,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.0.3"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.0.4"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60
@@ -611,6 +611,7 @@ class CursorFilter:
     def __init__(self, bounds, sensitivity: float = 1.0):
         self.x0, self.y0, self.x1, self.y1 = bounds
         self.sensitivity = normalize_sensitivity(sensitivity)
+        self.gain_multiplier = 1.0       # temporary screenshot precision; never saved as the normal gain
         self.fx = OneEuro(SMOOTH_MIN_CUTOFF, SMOOTH_BETA)
         self.fy = OneEuro(SMOOTH_MIN_CUTOFF, SMOOTH_BETA)
         self.reset()
@@ -668,16 +669,16 @@ class CursorFilter:
             return tuple(self.cur)
         self.speed = 0.5 * self.speed + 0.5 * math.hypot(mx, my) / dt
         k = min(max((self.speed - PRECISION_SPEED) / max(FULL_SPEED - PRECISION_SPEED, 1), 0.0), 1.0)
-        g = (PRECISION_GAIN + (1 - PRECISION_GAIN) * k) * self.sensitivity
+        g = (PRECISION_GAIN + (1 - PRECISION_GAIN) * k) * self.sensitivity * self.gain_multiplier
         self.reason = "edge of box" if (edge[0] or edge[1]) else ("fast move" if k > 0 else "slow move")
         self.cur[0] += g * mx
         self.cur[1] += g * my
-        pull = min(1.0, REALIGN_RATE * k * dt)
+        pull = min(1.0, REALIGN_RATE * k * dt * self.gain_multiplier)
         for i, (p, raw, at_edge) in enumerate(((px, fx, edge[0]), (py, fy, edge[1]))):
             # re-align during fast motion; when the finger is pushed past the edge of the box, go all the
             # way to the screen edge
             if at_edge:
-                self.cur[i] += (raw - self.cur[i]) * min(1.0, REALIGN_RATE * dt)
+                self.cur[i] += (raw - self.cur[i]) * min(1.0, REALIGN_RATE * dt * self.gain_multiplier)
             else:
                 self.cur[i] += (p - self.cur[i]) * pull
         self.cur[0] = min(max(self.cur[0], self.x0), self.x1)
@@ -2965,10 +2966,114 @@ def ensure_package(module: str, package: str) -> bool:
         return False
 
 
+def screenshot_window(process: str, cls: str, rect: tuple, monitor: tuple, topmost: bool) -> bool:
+    """Capture UI only: opening the ordinary Snipping Tool editor must not slow the cursor."""
+    process = process.lower()
+    if process not in ("screenclippinghost.exe", "snippingtool.exe"):
+        return False
+    l, t, r, b = rect
+    if r <= l or b <= t:
+        return False
+    if process == "screenclippinghost.exe" or "snippercapture" in cls.lower() or "screenclipping" in cls.lower():
+        return True
+    ml, mt, mr, mb = monitor
+    covered = max(0, min(r, mr)-max(l, ml)) * max(0, min(b, mb)-max(t, mt))
+    return topmost and covered >= .90 * max((mr-ml)*(mb-mt), 1)
+
+
+def screenshot_selection_active() -> bool:
+    """Read visible capture windows; no screenshot pixels, foreground changes or input injection."""
+    import ctypes as c
+    from ctypes import wintypes as w
+    u, k = c.WinDLL("user32"), c.WinDLL("kernel32")
+    class MonitorInfo(c.Structure):
+        _fields_ = [("cbSize", w.DWORD), ("monitor", w.RECT), ("work", w.RECT), ("flags", w.DWORD)]
+    u.IsWindowVisible.argtypes = [w.HWND]
+    u.GetWindowRect.argtypes = [w.HWND, c.POINTER(w.RECT)]
+    u.GetWindowLongW.argtypes = [w.HWND, c.c_int]
+    u.GetClassNameW.argtypes = [w.HWND, w.LPWSTR, c.c_int]
+    u.GetWindowThreadProcessId.argtypes = [w.HWND, c.POINTER(w.DWORD)]
+    u.MonitorFromWindow.argtypes = [w.HWND, w.DWORD]
+    u.MonitorFromWindow.restype = w.HANDLE
+    u.GetMonitorInfoW.argtypes = [w.HANDLE, c.POINTER(MonitorInfo)]
+    k.OpenProcess.argtypes = [w.DWORD, w.BOOL, w.DWORD]
+    k.OpenProcess.restype = w.HANDLE
+    k.QueryFullProcessImageNameW.argtypes = [w.HANDLE, w.DWORD, w.LPWSTR, c.POINTER(w.DWORD)]
+    k.CloseHandle.argtypes = [w.HANDLE]
+    active = False
+    @c.WINFUNCTYPE(w.BOOL, w.HWND, w.LPARAM)
+    def each(hwnd, _):
+        nonlocal active
+        if not u.IsWindowVisible(hwnd):
+            return True
+        cls = c.create_unicode_buffer(256)
+        u.GetClassNameW(hwnd, cls, len(cls))
+        topmost = bool(u.GetWindowLongW(hwnd, -20) & 8)
+        # Capture surfaces are topmost; named capture classes also cover host variants.
+        if not topmost and not any(x in cls.value.lower() for x in ("snipper", "screenclipping")):
+            return True
+        pid = w.DWORD()
+        u.GetWindowThreadProcessId(hwnd, c.byref(pid))
+        handle = k.OpenProcess(0x1000, False, pid.value)
+        if not handle:
+            return True
+        try:
+            path, length = c.create_unicode_buffer(32768), w.DWORD(32768)
+            if not k.QueryFullProcessImageNameW(handle, 0, path, c.byref(length)):
+                return True
+            rect, info = w.RECT(), MonitorInfo()
+            info.cbSize = c.sizeof(info)
+            if not u.GetWindowRect(hwnd, c.byref(rect)) or not u.GetMonitorInfoW(u.MonitorFromWindow(hwnd, 2), c.byref(info)):
+                return True
+            def box(r):
+                return (r.left, r.top, r.right, r.bottom)
+            if screenshot_window(os.path.basename(path.value), cls.value, box(rect), box(info.monitor), topmost):
+                active = True
+                return False
+        finally:
+            k.CloseHandle(handle)
+        return True
+    u.EnumWindows.argtypes = [c.WINFUNCTYPE(w.BOOL, w.HWND, w.LPARAM), w.LPARAM]
+    u.EnumWindows(each, 0)
+    return active
+
+
+class ScreenshotPrecision:
+    def __init__(self, cursor, enabled=True, probe=None):
+        self.cursor, self.enabled = cursor, enabled
+        self.probe = probe or screenshot_selection_active
+        self.next_check = 0.0
+
+    def update(self, now):
+        previous = self.cursor.gain_multiplier
+        if not self.enabled:
+            self.cursor.gain_multiplier = 1.0
+            self.next_check = 0.0
+        elif now >= self.next_check:
+            self.next_check = now + .2
+            try:
+                self.cursor.gain_multiplier = .75 if self.probe() else 1.0
+            except Exception as exc:
+                self.cursor.gain_multiplier = 1.0
+                log.debug("screenshot precision detection unavailable: %s", exc)
+        if self.cursor.gain_multiplier != previous:
+            log.info("screenshot precision: %s (normal sensitivity %.0f%%)",
+                     "75% gain" if self.cursor.gain_multiplier == .75 else "normal gain restored",
+                     self.cursor.sensitivity * 100)
+
+    def set_enabled(self, enabled):
+        self.enabled = bool(enabled)
+        self.next_check = 0.0
+        if not self.enabled:
+            self.cursor.gain_multiplier = 1.0
+
+
 class SensitivityWindow:
     """A real slider opened from the tray; all Tk operations stay on its own UI thread."""
-    def __init__(self, get_value, on_change, on_save):
+    def __init__(self, get_value, on_change, on_save, get_screenshot=None, on_screenshot=None):
         self.get_value, self.on_change, self.on_save = get_value, on_change, on_save
+        self.get_screenshot = get_screenshot or (lambda: True)
+        self.on_screenshot = on_screenshot or (lambda enabled: None)
         self.show_evt, self.stop_evt = threading.Event(), threading.Event()
         self.lock = threading.Lock()
         self.thread = None
@@ -3038,6 +3143,10 @@ class SensitivityWindow:
             ttk.Label(ends, text="250% - faster").pack(side="right")
             ttk.Label(frame, text="Changes apply immediately and are remembered.").pack(anchor="w", pady=(16, 12))
 
+            screenshot = tk.BooleanVar(value=self.get_screenshot())
+            ttk.Checkbutton(frame, text="Reduce sensitivity by 25% while selecting a screenshot",
+                            variable=screenshot, command=lambda: self.on_screenshot(screenshot.get())).pack(anchor="w", pady=(0, 12))
+
             def hide():
                 flush()
                 root.withdraw()
@@ -3059,6 +3168,7 @@ class SensitivityWindow:
                     return
                 if self.show_evt.is_set():
                     self.show_evt.clear()
+                    screenshot.set(self.get_screenshot())
                     gain = normalize_sensitivity(self.get_value())
                     value.set(gain * 100)
                     text.set(f"{gain * 100:.0f}%")
@@ -4225,8 +4335,13 @@ def run(preview: bool) -> bool:
                     on_main_side=lambda side: main_side_changed(side), gestures_on=False,
                     cursor_sensitivity=state.get("cursor_sensitivity", 1.0))
     log.info("startup: camera on, gestures off; hold both fists to enable gestures")
+    screenshot_precision = ScreenshotPrecision(engine.cursor, state.get("screenshot_precision", True) is True)
+    def set_screenshot_precision(enabled):
+        screenshot_precision.set_enabled(enabled)
+        save_state(screenshot_precision=bool(enabled))
     sensitivity_window = SensitivityWindow(lambda: engine.sensitivity, engine.set_sensitivity,
-                                           lambda v: save_state(cursor_sensitivity=v))
+                                           lambda v: save_state(cursor_sensitivity=v),
+                                           lambda: screenshot_precision.enabled, set_screenshot_precision)
     def main_side_changed(side: str):
         save_state(main_side=side)
         beep(660)
@@ -4378,6 +4493,7 @@ def run(preview: bool) -> bool:
                 restart = True
                 break
             mono = time.monotonic()
+            screenshot_precision.update(mono)
             if AUTO_RESTART_ON_EDIT and mono - last_file_check > 1.0:
                 last_file_check = mono
                 try:

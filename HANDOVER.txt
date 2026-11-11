@@ -226,3 +226,12 @@ request elevation again. Desktop shortcuts, batch launchers and Start with Windo
 this same startup check. Windows startup may require a physical approval of the UAC prompt;
 this does not create an unattended elevated scheduled task or change UAC policy. Cancelling
 leaves the app closed. Main starts camera on and gestures off after approval, as before.
+
+Screenshot precision (1.0.4): Cursor sensitivity settings have a checkbox, enabled by default,
+"Reduce sensitivity by 25% while selecting a screenshot". Saved as screenshot_precision.
+Visible Windows capture overlays are probed at most every 0.2 seconds, including captures
+opened with physical shortcuts. While selecting, CursorFilter.gain_multiplier is 0.75;
+it returns to 1 on capture exit/cancel or disabling the checkbox. The normal slider value
+is unchanged, including adjustments during capture. Snipping Tool's ordinary editor does
+not count; detection checks the process and capture-class/full-monitor topmost geometry.
+The temporary factor is never saved as the normal sensitivity, and detection errors restore it.
