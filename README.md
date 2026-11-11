@@ -2,6 +2,10 @@
 
 Control the Windows mouse with your hands through the laptop webcam. Everything runs locally.
 
+Windows asks for **administrator approval** when you launch the app, so gesture clicks can also
+control the Windows on-screen keyboard. Approve the UAC prompt with your physical mouse or keyboard.
+Cancelling leaves the app closed.
+
 At every launch, the **camera is on and gestures are off** (orange tray badge). Hold both fists for a
 second, or right-click the tray icon and select **Gestures on**, to enable them.
 
@@ -246,3 +250,13 @@ uses a consistent input stream for overlays; it does not bypass UIPI, UIAccess o
 desktop restrictions. Real OSK/Snipping Tool verification is still required. Recent logs
 also showed 6-8 tracking FPS and long pinches; delivery acceptance does not prove a target
 processed an event. Do not claim legacy mouse APIs alone caused the reported problem.
+
+Administrator startup (1.0.3): the user confirmed OSK gesture clicks work when elevated.
+Every actual app launch now checks elevation before log files, mutex and camera setup.
+A normal launch requests standard Windows UAC approval using ShellExecuteW("runas"),
+then the parent exits. The exact Python executable, script path and arguments are preserved
+with Windows command-line quoting. Already-elevated launches and automatic restarts do not
+request elevation again. Desktop shortcuts, batch launchers and Start with Windows all reach
+this same startup check. Windows startup may require a physical approval of the UAC prompt;
+this does not create an unattended elevated scheduled task or change UAC policy. Cancelling
+leaves the app closed. Main starts camera on and gestures off after approval, as before.

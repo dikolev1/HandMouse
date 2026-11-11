@@ -71,7 +71,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.0.2"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.0.3"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60
@@ -2915,6 +2915,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
 <h3>Main hand</h3>
 <p><b>L-pose keys:</b> index up, thumb out sideways, middle/ring/little fingers folded. Physical <b>left hand = Backspace</b>: deletes once, waits 0.5 seconds, then repeats while held; release to stop. Physical <b>right hand = Enter</b>: one press per pose, release to repeat. These keys follow the physical hand even if you change the main hand.</p>
 <p>Your <b>right hand</b> moves the cursor and clicks; the left one gives keyboard shortcuts (below). Make a <b>fist twice</b> quickly with either hand to swap the main hand, with one or both hands visible. Open between fists and after the second fist. The app remembers the selected hand after a restart.</p>
+<p>Hand Mouse requests administrator approval at launch so gesture clicks can control the Windows on-screen keyboard. Approve the Windows prompt with a physical mouse or keyboard; cancelling leaves the app closed.</p>
 <h3>Tray icon (next to the clock)</h3>
 <ul><li><b>Left-click</b>: stop / resume tracking, camera off (red badge = stopped, orange badge = gestures off).</li>
 <li><b>Right-click</b>: Camera &amp; log window, Gestures on, Cursor sensitivity, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size, Close.</li>
@@ -4559,6 +4560,27 @@ def run(preview: bool) -> bool:
     return restart
 
 
+def ensure_administrator() -> bool:
+    """Continue only when elevated; otherwise ask Windows to relaunch this exact command.
+
+    No UAC bypass or persistent security changes. The unelevated parent exits before
+    opening logs, acquiring the app mutex, or starting any camera/gesture threads.
+    """
+    import ctypes
+    shell = ctypes.windll.shell32
+    if shell.IsUserAnAdmin():
+        return True
+    shell.ShellExecuteW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_wchar_p,
+                                    ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_int]
+    shell.ShellExecuteW.restype = ctypes.c_void_p
+    arguments = subprocess.list2cmdline([SCRIPT] + sys.argv[1:])
+    result = shell.ShellExecuteW(None, "runas", sys.executable, arguments, HERE, 0)
+    if not result or result <= 32:
+        message_box("Hand Mouse was not started. Administrator approval is needed to control "
+                    "the Windows on-screen keyboard. Launch it again and approve the Windows prompt.")
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="Control the mouse with your hands.")
     parser.add_argument("--preview", action="store_true", help="show camera window with live values")
@@ -4566,6 +4588,9 @@ def main():
     parser.add_argument("--restarted", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--create-shortcut", action="store_true", help="(re)create the desktop icon and exit")
     args = parser.parse_args()
+
+    if sys.platform == "win32" and not ensure_administrator():
+        return 0
 
     from logging.handlers import RotatingFileHandler
     handlers = [RotatingFileHandler(LOG_PATH, maxBytes=int(LOG_MAX_MB * 1024 * 1024), backupCount=2,
