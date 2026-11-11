@@ -71,7 +71,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.0.0"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.0.1"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60
@@ -2869,6 +2869,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
 <li>You can sit further back: small hands are read from a zoomed view, and movements scale with distance.</li>
 <li>If gestures feel too big or too small after you change where you sit, use <b>Re-learn my hand size</b> and hold your open hand up for a few seconds.</li>
 <li>The cursor box (grey rectangle in the camera window) follows your hand when your finger stays outside it, and slowly fits its size to how far you usually move. The cursor doesn't jump when it does. The outer blue border keeps the whole box roughly a hand-width away from the camera edges.</li>
+<li><b>Camera</b>: select Camera 1 through 10; the choice is saved. Selecting a different camera restarts tracking with gestures off. Use Camera &amp; log window to identify the feed.</li>
 <li><b>Camera &amp; log window</b> shows what the app sees (green = main hand, orange = second hand), what it is doing right now, and a log of every click, button, scroll and swipe it recognised. <kbd>P</kbd> stops/resumes, <kbd>Esc</kbd> closes the window (the app keeps running).</li>
 <li><b>Debug: save a picture of every gesture</b> (tray menu, off by default): each recognised gesture saves a strip of camera frames to the <code>debug</code> folder, to find out why a gesture misfired.</li>
 <li>Keys: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>H</kbd> stop/resume, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> re-learn hand size, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Q</kbd> quit.</li></ul>
@@ -3022,6 +3023,18 @@ class SensitivityWindow:
                     pass
 
 
+def selected_camera(state: dict) -> int:
+    value = state.get("camera_index", CAMERA_INDEX)
+    return value if type(value) is int and 0 <= value <= 9 else CAMERA_INDEX
+
+
+def choose_camera(index: int):
+    if type(index) is not int or not 0 <= index <= 9:
+        raise ValueError("camera index must be 0 through 9")
+    # A different camera needs its own mode test and hand-size calibration.
+    save_state(camera_index=index, camera=None, camera_probe_time=0, ref_palm=None)
+
+
 class UpdateChecker:
     """Notify about numbered main releases; all network work stays off the gesture/UI threads."""
     def __init__(self, notify, stop, state=None):
@@ -3099,6 +3112,8 @@ class TrayIcon:
         self.on_view = on_view or (lambda: None)
         self.on_relearn = on_relearn or (lambda: None)
         self.on_sensitivity = on_sensitivity or (lambda: None)
+        self.camera_index = selected_camera(load_state())
+        self.on_camera = lambda index: None
         self.icon = None
         if not TRAY_ICON:
             return
@@ -3116,9 +3131,15 @@ class TrayIcon:
                     log.exception("could not change start with Windows")
                 self.refresh()
 
+            def camera_item(index):
+                return item(f"Camera {index + 1} (index {index})",
+                            lambda icon, it: self.on_camera(index),
+                            checked=lambda it: self.camera_index == index, radio=True)
+
             menu = pystray.Menu(
                 item(lambda it: "Hand Mouse: " + self._state_text(), lambda icon, it: None, enabled=False),
                 pystray.Menu.SEPARATOR,
+                item("Camera", pystray.Menu(*(camera_item(index) for index in range(10)))),
                 item("Camera && log window", lambda icon, it: self.on_view(), checked=lambda it: self.view_shown()),
                 item("Gestures on (two fists = on / off)", lambda icon, it: self.on_gestures(),
                      checked=lambda it: not self.gestures_off(), enabled=lambda it: not self.is_paused()),
@@ -3614,8 +3635,8 @@ class Camera:
             pass
 
 
-def _open_capture(cv2, backend, w: int, h: int):
-    cap = cv2.VideoCapture(CAMERA_INDEX, backend) if backend is not None else cv2.VideoCapture(CAMERA_INDEX)
+def _open_capture(cv2, backend, w: int, h: int, camera_index: int = CAMERA_INDEX):
+    cap = cv2.VideoCapture(camera_index, backend) if backend is not None else cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         cap.release()
         return None
@@ -3631,12 +3652,13 @@ def open_camera(cv2, state: dict | None = None, notify=None, verify: bool = True
     """Open the camera in the sharpest mode that is still fast. The modes are tested once (a few seconds) and
     the result is remembered; it is tested again (at most once a day) if the remembered mode got much slower."""
     state = state if state is not None else {}
+    camera_index = selected_camera(state)
     backends = {"dshow": getattr(cv2, "CAP_DSHOW", None), "msmf": getattr(cv2, "CAP_MSMF", None)}
     backends = {k: v for k, v in backends.items() if v is not None} or {"default": None}
     modes = [(w, h) for w, h in CAMERA_MODES if w <= CAMERA_WIDTH] or [(CAMERA_WIDTH, CAMERA_HEIGHT)]
 
     def try_mode(bname, w, h):
-        cap = _open_capture(cv2, backends.get(bname), w, h)
+        cap = _open_capture(cv2, backends.get(bname), w, h, camera_index)
         if cap is None:
             return None, 0.0
         cam = Camera(cap, f"{bname} {w}x{h}")
@@ -3649,8 +3671,10 @@ def open_camera(cv2, state: dict | None = None, notify=None, verify: bool = True
         return cam, fps
 
     saved = state.get("camera")
+    if saved and saved.get("index", CAMERA_INDEX) != camera_index:
+        saved = None
     if saved and saved.get("backend") in backends and not verify:
-        cap = _open_capture(cv2, backends.get(saved["backend"]), saved["w"], saved["h"])   # resume: no test
+        cap = _open_capture(cv2, backends.get(saved["backend"]), saved["w"], saved["h"], camera_index)   # resume: no test
         if cap is not None:
             log.info("camera: %s %dx%d", saved["backend"], saved["w"], saved["h"])
             return Camera(cap, f"{saved['backend']} {saved['w']}x{saved['h']}")
@@ -3671,7 +3695,7 @@ def open_camera(cv2, state: dict | None = None, notify=None, verify: bool = True
             if cam is None:
                 continue
             if fps >= CAMERA_MIN_FPS:
-                save_state(camera={"backend": bname, "w": w, "h": h, "fps": round(fps, 1)},
+                save_state(camera={"index": camera_index, "backend": bname, "w": w, "h": h, "fps": round(fps, 1)},
                            camera_probe_time=time.time())
                 log.info("camera mode chosen: %s %dx%d (%.0f fps)", bname, w, h, fps)
                 return cam
@@ -3681,7 +3705,7 @@ def open_camera(cv2, state: dict | None = None, notify=None, verify: bool = True
         fps, _, bname, w, h = max(results)
         cam, fps2 = try_mode(bname, w, h)
         if cam is not None:
-            save_state(camera={"backend": bname, "w": w, "h": h, "fps": round(fps2, 1)},
+            save_state(camera={"index": camera_index, "backend": bname, "w": w, "h": h, "fps": round(fps2, 1)},
                        camera_probe_time=time.time())
             log.info("camera mode chosen: %s %dx%d (%.0f fps, the fastest available)", bname, w, h, fps2)
             return cam
@@ -4162,6 +4186,7 @@ def run(preview: bool) -> bool:
 
     quit_evt = threading.Event()
     pause_evt = threading.Event()
+    camera_change_evt = threading.Event()
     calib_evt = threading.Event()
     view_evt = threading.Event()        # camera view window shown
     if preview:
@@ -4227,6 +4252,15 @@ def run(preview: bool) -> bool:
                     gestures_off=lambda: engine.gestures_off, on_gestures=toggle_gestures,
                     debug_on=lambda: RECORDER.on, on_debug=toggle_debug, on_sensitivity=sensitivity_window.show)
 
+    def change_camera(index):
+        if index == selected_camera(load_state()):
+            view_evt.set()
+            return
+        choose_camera(index)
+        camera_change_evt.set()
+        tray.notify(f"Switching to Camera {index + 1}. Gestures will start off; hold both fists to enable.")
+    tray.on_camera = change_camera
+
     updates = UpdateChecker(tray.notify, quit_evt, state)
     tray.updates = updates
     updates.start()
@@ -4284,6 +4318,9 @@ def run(preview: bool) -> bool:
 
     try:
         while not quit_evt.is_set():
+            if camera_change_evt.is_set():
+                restart = True
+                break
             mono = time.monotonic()
             if AUTO_RESTART_ON_EDIT and mono - last_file_check > 1.0:
                 last_file_check = mono
@@ -4348,9 +4385,10 @@ def run(preview: bool) -> bool:
                 if cap is None:
                     fails += 1
                     if fails == 1:
-                        log.error("camera %d could not be opened, retrying", CAMERA_INDEX)
+                        log.error("camera %d could not be opened, retrying", selected_camera(load_state()))
                     if fails == 10:
-                        msg = (f"Camera {CAMERA_INDEX} could not be opened. Is another app using it, or is "
+                        msg = (f"Camera index {selected_camera(load_state())} could not be opened. Choose another camera "
+                               "from Tray > Camera. Is another app using it, or is "
                                "camera access off in Windows Privacy settings?")
                         tray.notify(msg) if tray.icon is not None else message_box(msg)
                     time.sleep(1.0)

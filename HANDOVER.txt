@@ -200,3 +200,10 @@ no files are downloaded or replaced automatically. Older copies need this versio
 Before publishing a new version to main, increase APP_VERSION in hand_mouse.py. Develop versions
 newer than main never prompt to downgrade. The check reads at most 16 KiB with an 8-second timeout
 and never executes downloaded source. Update checks continue while gesture tracking is paused.
+
+Camera selection (1.0.1): right-click the tray icon -> Camera -> Camera 1 through 10
+(OpenCV indices 0 through 9; these are numbered choices, not a detected-device list).
+Use Camera & log window to identify the feed. The choice persists as camera_index.
+Choosing a different camera restarts the app with gestures off and clears the old mode,
+probe time and hand calibration. Unavailable cameras can be changed from the tray even
+while opening fails. Camera profiles include their index; legacy profiles apply only to index 0.
