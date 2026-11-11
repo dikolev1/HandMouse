@@ -382,3 +382,12 @@ L-pose recognition uses thumb spread relative to the index axis, normalized by p
 instead of the rotating finger bounding box. A narrower projected thumb/index angle is accepted
 with release hysteresis; folded-finger, fingertip-separation and full-visibility checks remain.
 Photo-derived landmark tests cover sizes, rotations, both sides and tucked/parallel-thumb rejection.
+
+Update notifications (1.0.0 onward): a background check reads APP_VERSION from GitHub main,
+20 seconds after launch and every six hours while running. Newer major.minor.patch versions
+notify once per version, remembered across restarts. Tray: Check for updates / Download latest
+version / installed version. Manual checks always report a result. Offline checks fail quietly;
+no files are downloaded or replaced automatically. Older copies need this version installed once.
+Before publishing a new version to main, increase APP_VERSION in hand_mouse.py. Develop versions
+newer than main never prompt to downgrade. The check reads at most 16 KiB with an 8-second timeout
+and never executes downloaded source. Update checks continue while gesture tracking is paused.

@@ -71,6 +71,11 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
+APP_VERSION = "1.0.0"       # bump before publishing a new version to main (major.minor.patch)
+UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
+UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
+UPDATE_INTERVAL = 6 * 60 * 60
+
 CAMERA_INDEX = 0            # 0 = built-in webcam; try 1, 2 for external cameras
 CAMERA_WIDTH = 1280         # largest camera resolution to use; higher keeps far-away fingers readable
 CAMERA_HEIGHT = 720
@@ -3017,6 +3022,68 @@ class SensitivityWindow:
                     pass
 
 
+class UpdateChecker:
+    """Notify about numbered main releases; all network work stays off the gesture/UI threads."""
+    def __init__(self, notify, stop, state=None):
+        self.notify, self.stop = notify, stop
+        self.notified = (state or {}).get("update_notified", "")
+        self.lock = threading.Lock()
+
+    @staticmethod
+    def latest():
+        request = urllib.request.Request(UPDATE_SOURCE, headers={
+            "User-Agent": "HandMouse/" + APP_VERSION, "Cache-Control": "no-cache"})
+        with urllib.request.urlopen(request, timeout=8) as response:
+            source = response.read(16384).decode("utf-8")
+        match = re.search(r'^APP_VERSION = "(\d+\.\d+\.\d+)"', source, re.MULTILINE)
+        if match is None:
+            raise ValueError("main does not publish a numbered version yet")
+        return match.group(1)
+
+    def check(self, manual=False):
+        if not self.lock.acquire(blocking=False):
+            return
+        try:
+            latest = self.latest()
+            if self.stop.is_set():
+                return
+            newer = tuple(map(int, latest.split("."))) > tuple(map(int, APP_VERSION.split(".")))
+            if newer:
+                if manual or latest != self.notified:
+                    self.notify(f"Hand Mouse {latest} is available (installed: {APP_VERSION}). "
+                                "Update needed: right-click the tray icon and choose Download latest version.")
+                    self.notified = latest
+                    save_state(update_notified=latest)
+                log.info("update available: %s (installed %s)", latest, APP_VERSION)
+            elif manual:
+                self.notify(f"Hand Mouse {APP_VERSION} is up to date.")
+        except Exception as exc:
+            log.info("update check unavailable: %s", exc)
+            if manual and not self.stop.is_set():
+                self.notify("Could not check for updates. Check your internet connection and try again.")
+        finally:
+            self.lock.release()
+
+    def manual(self):
+        threading.Thread(target=self.check, kwargs={"manual": True}, daemon=True,
+                         name="update-check-manual").start()
+
+    def start(self):
+        def watch():
+            if self.stop.wait(20):
+                return
+            while not self.stop.is_set():
+                self.check()
+                if self.stop.wait(UPDATE_INTERVAL):
+                    return
+        threading.Thread(target=watch, daemon=True, name="update-check").start()
+
+
+def open_update_page():
+    import webbrowser
+    webbrowser.open(UPDATE_PAGE)
+
+
 class TrayIcon:
     """Icon in the Windows notification area (next to the clock).
     Left-click: stop / resume tracking.  Right-click: menu."""
@@ -3057,6 +3124,10 @@ class TrayIcon:
                      checked=lambda it: not self.gestures_off(), enabled=lambda it: not self.is_paused()),
                 item(lambda it: "Resume tracking" if self.is_paused() else "Stop tracking",
                      lambda icon, it: self.on_toggle(), default=True),
+                item("Check for updates", lambda icon, it: self.updates.manual()
+                     if getattr(self, "updates", None) else None),
+                item("Download latest version", lambda icon, it: open_update_page()),
+                item("Version " + APP_VERSION, lambda icon, it: None, enabled=False),
                 item("Gestures help", lambda icon, it: open_help()),
                 item("Cursor sensitivity...", lambda icon, it: self.on_sensitivity()),
                 pystray.Menu.SEPARATOR,
@@ -4155,6 +4226,10 @@ def run(preview: bool) -> bool:
                     view_shown=view_evt.is_set, on_view=toggle_view, on_relearn=relearn,
                     gestures_off=lambda: engine.gestures_off, on_gestures=toggle_gestures,
                     debug_on=lambda: RECORDER.on, on_debug=toggle_debug, on_sensitivity=sensitivity_window.show)
+
+    updates = UpdateChecker(tray.notify, quit_evt, state)
+    tray.updates = updates
+    updates.start()
 
     def show_requested():
         view_evt.set()
