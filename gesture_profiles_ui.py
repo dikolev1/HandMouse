@@ -2,6 +2,7 @@
 from copy import deepcopy
 import logging
 import threading
+import queue
 from gesture_profiles import BASIC, GESTURES, MOUSE_GESTURES, action_label, validate_action
 
 log=logging.getLogger("hand_mouse")
@@ -14,6 +15,7 @@ class ProfilesWindow:
         self.custom=custom
         self.settings=settings
         self.requested_tab=None
+        self.popup_requests=queue.SimpleQueue()
         self.show_evt,self.stop_evt=threading.Event(),threading.Event()
         self.lock=threading.Lock()
         self.thread=None
@@ -26,6 +28,15 @@ class ProfilesWindow:
                 self.stop_evt.clear()
                 self.thread=threading.Thread(target=self._run,daemon=True,name="gesture-profiles")
                 self.thread.start()
+
+    def show_tray_popup(self,items,point,work):
+        with self.lock:
+            self.popup_requests.put((items,point,work))
+            if self.thread is None or not self.thread.is_alive():
+                self.stop_evt.clear()
+                self.thread=threading.Thread(target=self._run,daemon=True,name="settings")
+                self.thread.start()
+        return True
 
     def stop(self):
         self.stop_evt.set()
@@ -51,6 +62,7 @@ class ProfilesWindow:
         root.columnconfigure(0,weight=1)
         root.rowconfigure(0,weight=1)
         notebook=None
+        tray_popup=None
         pages={}
         settings_flush=lambda:None
         settings_poll=lambda:None
@@ -304,8 +316,9 @@ class ProfilesWindow:
             close_embedded()
             load()
             if self.custom is not None: self.custom.stop_training()
+            if tray_popup is not None: tray_popup.hide()
             for child in root.winfo_children():
-                if isinstance(child,tk.Toplevel): child.destroy()
+                if isinstance(child,tk.Toplevel) and child is not getattr(tray_popup,"window",None): child.destroy()
             root.withdraw()
         ttk.Button(header,text="Record custom...",command=record_custom).pack(side="right",padx=3)
         ttk.Button(edit,text="Test recorded",command=test_custom).grid(row=6,column=0,sticky="w",pady=(8,0))
@@ -331,12 +344,22 @@ class ProfilesWindow:
         load()
         if self.store.load_error: note.set("Could not load saved profiles: "+self.store.load_error+". Basic is active.")
         def poll():
+            nonlocal tray_popup
             if self.stop_evt.is_set():
                 settings_flush()
+                if tray_popup is not None: tray_popup.hide()
                 if self.custom is not None: self.custom.stop_training()
                 root.destroy(); return
             settings_poll()
+            popup_request=None
+            while not self.popup_requests.empty(): popup_request=self.popup_requests.get_nowait()
+            if popup_request is not None:
+                if tray_popup is None:
+                    from tray_popup import TrayPopup
+                    tray_popup=TrayPopup(root)
+                tray_popup.show(*popup_request)
             if self.show_evt.is_set():
+                if tray_popup is not None: tray_popup.hide()
                 self.show_evt.clear()
                 if notebook is not None and self.requested_tab:
                     tab={"Help":"Help & updates","Profiles":"Gesture profiles","Cursor":"Cursor & appearance"}.get(self.requested_tab,self.requested_tab)

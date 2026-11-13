@@ -374,3 +374,13 @@ Tests cover Device refresh, persistence, real root/child widgets, the settings s
 Settings tab theme fix (1.3.1): Notebook tabs now explicitly style normal, selected, hover
 and disabled states using the shared Light/Dark/Device palette, including borders and text.
 This overrides clam defaults that otherwise left the tabs light grey in dark mode.
+
+Tray menu theme (1.3.2): the tray's right-click popup now uses the same Light/Dark/Device
+palette as Settings, including hover, disabled status, checkmarks, separators and the default
+tracking action. tray_popup.py snapshots the existing pystray menu descriptors and intercepts
+only the Windows right-click event; left-click/notifications retain native behavior. The popup
+runs on the existing Settings Tk thread, lazily starting that host without opening Settings.
+Settings remains a single window; selecting it closes the menu before opening it. Escape,
+outside focus, Up/Down/Enter and monitor work-area clamping are supported, including negative
+monitor origins via SetWindowPos. Snapshot/dispatch failures fall back to the native menu.
+No system-wide theme settings are changed. Deploy tray_popup.py before updating the live script.

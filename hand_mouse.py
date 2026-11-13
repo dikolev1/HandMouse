@@ -71,7 +71,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.3.1"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.3.2"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60
@@ -3423,7 +3423,7 @@ class TrayIcon:
     Left-click: stop / resume tracking.  Right-click: menu."""
 
     def __init__(self, is_paused, on_toggle, on_close, view_shown=None, on_view=None, on_relearn=None,
-                 gestures_off=None, on_gestures=None, debug_on=None, on_debug=None, on_sensitivity=None, on_profiles=None, on_settings=None):
+                 gestures_off=None, on_gestures=None, debug_on=None, on_debug=None, on_sensitivity=None, on_profiles=None, on_settings=None, on_popup=None):
         self.is_paused, self.on_toggle, self.on_close = is_paused, on_toggle, on_close
         self.debug_on = debug_on or (lambda: False)
         self.on_debug = on_debug or (lambda: None)
@@ -3435,6 +3435,7 @@ class TrayIcon:
         self.on_sensitivity = on_sensitivity or (lambda: None)
         self.on_profiles = on_profiles or (lambda: None)
         self.on_settings = on_settings or self.on_profiles
+        self.on_popup = on_popup
         self.camera_index = selected_camera(load_state())
         self.on_camera = lambda index: None
         self.icon = None
@@ -3459,7 +3460,11 @@ class TrayIcon:
                 pystray.Menu.SEPARATOR,
                 item("Close Hand Mouse", lambda icon, it: self.on_close()),
             )
-            self.icon = pystray.Icon("HandMouse", self.images[self._state()], self._title(), menu)
+            icon_type = pystray.Icon
+            if self.on_popup is not None and sys.platform == "win32" and hasattr(icon_type, "_on_notify"):
+                from tray_popup import themed_icon_type
+                icon_type = themed_icon_type(icon_type, self.on_popup)
+            self.icon = icon_type("HandMouse", self.images[self._state()], self._title(), menu)
             threading.Thread(target=self._run, daemon=True, name="tray").start()
         except Exception:
             log.exception("could not create the tray icon")
@@ -4580,7 +4585,8 @@ def run(preview: bool) -> bool:
                     view_shown=view_evt.is_set, on_view=toggle_view, on_relearn=relearn,
                     gestures_off=lambda: engine.gestures_off, on_gestures=toggle_gestures,
                     debug_on=lambda: RECORDER.on, on_debug=toggle_debug,
-                    on_settings=profiles_window.show)
+                    on_settings=profiles_window.show,
+                    on_popup=lambda items, point, work: bool(profiles_window.settings) and profiles_window.show_tray_popup(items, point, work))
 
     def change_camera(index):
         if index == selected_camera(load_state()):
