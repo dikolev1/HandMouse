@@ -32,10 +32,10 @@ class WakeTests(unittest.TestCase):
         self.assertTrue(self.e.gestures_off)
 
     def test_full_sequence_only_activates_after_opening(self):
-        self.feed("open",.6)
+        # No initial open-palms stage is needed.
         self.feed("fists",2.5)
         self.assertTrue(self.e.gestures_off)
-        self.feed("open",.5)
+        self.feed("open",1.2)
         self.assertFalse(self.e.gestures_off)
         self.assertEqual(self.mouse.events,[])
 
@@ -44,17 +44,18 @@ class WakeTests(unittest.TestCase):
         self.feed("partial",.2)
         self.feed("fists",2.4)
         self.feed("partial",.2)
-        self.feed("open",.5)
+        self.feed("open",1.2)
         self.assertFalse(self.e.gestures_off)
 
     def test_short_hold_and_single_hand_do_not_enable(self):
         self.feed("open",.6)
-        self.feed("fists",1.5)
+        self.feed("fists",1.2)
         self.feed("open",.6)
         self.assertTrue(self.e.gestures_off)
+        self.feed("fists",1)
         self.feed("one",1)
-        self.feed("fists",2.5)
-        self.feed("open",.5)
+        self.feed("fists",1)
+        self.feed("open",1.2)
         self.assertTrue(self.e.gestures_off)
 
     def test_tracking_loss_or_uncertainty_cancels_sequence(self):
@@ -63,13 +64,35 @@ class WakeTests(unittest.TestCase):
             self.feed("open",.6)
             self.feed("fists",2.5)
             self.feed(interruption,.1)
-            self.feed("open",.5)
+            self.feed("open",1.2)
             self.assertTrue(self.e.gestures_off)
+
+    def test_minimum_and_maximum_hold_are_accepted(self):
+        for duration in (1.5,3):
+            self.setUp()
+            self.feed("fists",duration)
+            self.feed("open",1.2)
+            self.assertFalse(self.e.gestures_off)
+
+    def test_one_second_open_is_required(self):
+        self.feed("fists",2)
+        self.feed("open",.8)
+        self.assertTrue(self.e.gestures_off)
+        self.feed("open",.4)
+        self.assertFalse(self.e.gestures_off)
+
+    def test_overlong_hold_does_not_start_a_second_timer(self):
+        self.feed("fists",5)
+        self.feed("open",1.2)
+        self.assertTrue(self.e.gestures_off)
+        self.feed("fists",2)
+        self.feed("open",1.2)
+        self.assertFalse(self.e.gestures_off)
 
     def test_completion_times_out_and_tray_still_works(self):
         self.feed("open",.6)
         self.feed("fists",8)
-        self.feed("open",.5)
+        self.feed("open",1.2)
         self.assertTrue(self.e.gestures_off)
         self.e.set_gestures(True)
         self.feed("open",.1)

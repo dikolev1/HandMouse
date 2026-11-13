@@ -243,3 +243,10 @@ partial sequences cannot enable gestures. Five-second timeouts apply before/afte
 The one-second two-fist pause stays available while enabled. Tray/manual enable remains.
 Startup also requires the deliberate sequence. Completion emits no other actions that frame.
 This supersedes older descriptions of two fists toggling gestures both ways.
+
+Simplified reactivation (1.0.6), superseding 1.0.5: no initial open-palms stage. Hold both
+fists continuously for 1.5 through 3 seconds, then both palms open continuously for 1 second.
+Short or overlong holds do not enable. An overlong hold cannot start another timer while
+fists remain closed; open palms for one second to reset before retrying. Hands must stay
+visible/readable throughout. Normal finger-unfolding gets a 0.7-second transition window.
+The one-second pause gesture and manual tray controls are unchanged.

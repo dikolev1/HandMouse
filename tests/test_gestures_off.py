@@ -31,7 +31,7 @@ check("while off: moving, clicks, buttons 4/5, fist scroll -> nothing at all", e
 check("...and it says so", sim.e.gesture == "gestures off")
 ev = sim.go(N(8, opn) + N(10, lambda t: fists()) + N(8, opn))
 check("two fists only 0.6 s while off -> still off", sim.e.gestures_off and acts(ev) == [])
-ev = sim.go(N(40, lambda t: fists()) + N(10, opn))
+ev = sim.go(N(40, lambda t: fists()) + N(20, opn))
 check("two-second fists then both open -> gestures on", not sim.e.gestures_off and sim.e.gestures_changed == "on")
 sim.e.gestures_changed = None
 ev = sim.go(N(30, lambda t: fists()) + N(10, one()))
