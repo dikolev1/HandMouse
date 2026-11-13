@@ -71,7 +71,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.3.0"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.3.1"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60

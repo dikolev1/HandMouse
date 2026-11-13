@@ -346,3 +346,7 @@ gesture_custom_ui.poll_window cancels its scheduled polling on destruction to av
 commands after embedded pages close. GUI tests cover one-root layout, live controls, saving,
 record/test/rebind/apply, no input in training, cleanup and button bounds. Deploy app_settings.py
 and updated helpers BEFORE the live script. Existing settings/profile files are preserved.
+
+Settings tab theme fix (1.3.1): Notebook tabs now explicitly style normal, selected, hover
+and disabled states using the shared Light/Dark/Device palette, including borders and text.
+This overrides clam defaults that otherwise left the tabs light grey in dark mode.

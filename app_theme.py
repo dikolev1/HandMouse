@@ -92,6 +92,13 @@ def attach_theme(root):
         if style.theme_use()!="clam": style.theme_use("clam")
         style.configure(".",background=p["bg"],foreground=p["fg"],fieldbackground=p["field"],
                         bordercolor=p["border"],lightcolor=p["border"],darkcolor=p["border"],troughcolor=p["card"])
+        style.configure("TNotebook",background=p["bg"],bordercolor=p["border"],tabmargins=(0,0,0,0))
+        style.configure("TNotebook.Tab",background=p["bg"],foreground=p["fg"],
+                        bordercolor=p["border"],lightcolor=p["border"],darkcolor=p["border"],padding=(10,5))
+        style.map("TNotebook.Tab",
+                  background=[("disabled",p["bg"]),("selected",p["card"]),("active",p["hover"])],
+                  foreground=[("disabled",p["disabled"]),("selected",p["accent"])],
+                  bordercolor=[("selected",p["accent"]),("active",p["border"])])
         style.configure("TFrame",background=p["bg"])
         style.configure("TLabel",background=p["bg"],foreground=p["fg"])
         style.configure("TLabelframe",background=p["bg"],bordercolor=p["border"])

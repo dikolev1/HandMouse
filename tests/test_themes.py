@@ -155,6 +155,10 @@ class ThemeTests(unittest.TestCase):
             self.assertEqual(classic.cget("background"),PALETTES["dark"]["field"])
             self.assertEqual(classic.cget("foreground"),PALETTES["dark"]["fg"])
             style=ttk.Style(root)
+            for state,color in (((),"bg"),(("selected",),"card"),(("active",),"hover"),(("disabled",),"bg")):
+                self.assertEqual(style.lookup("TNotebook.Tab","background",state),PALETTES["dark"][color])
+            self.assertEqual(style.lookup("TNotebook.Tab","foreground",("selected",)),PALETTES["dark"]["accent"])
+            self.assertEqual(style.lookup("TNotebook.Tab","foreground",("disabled",)),PALETTES["dark"]["disabled"])
             self.assertEqual(style.lookup("TEntry","fieldbackground"),PALETTES["dark"]["field"])
             self.assertEqual(style.lookup("TCombobox","foreground",("readonly",)),PALETTES["dark"]["fg"])
             self.assertEqual(style.lookup("Treeview","background"),PALETTES["dark"]["field"])
@@ -162,6 +166,8 @@ class ThemeTests(unittest.TestCase):
             THEME.set("light")
             root.after(650,root.quit);root.mainloop()
             self.assertEqual(root.cget("background"),PALETTES["light"]["bg"])
+            self.assertEqual(style.lookup("TNotebook.Tab","background",("selected",)),PALETTES["light"]["card"])
+            self.assertEqual(style.lookup("TNotebook.Tab","foreground",("selected",)),PALETTES["light"]["accent"])
         finally:
             if root is not None: root.destroy()
             THEME.configure(before)

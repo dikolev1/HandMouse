@@ -370,3 +370,7 @@ Generated help follows the chosen theme when opened (Device uses browser OS pref
 Windows menus/native file dialogs are rendered by Windows. Native title bars use the documented
 DWM immersive-dark attribute where supported; failure leaves normal system chrome intact.
 Tests cover Device refresh, persistence, real root/child widgets, the settings selector and panel pixels.
+
+Settings tab theme fix (1.3.1): Notebook tabs now explicitly style normal, selected, hover
+and disabled states using the shared Light/Dark/Device palette, including borders and text.
+This overrides clam defaults that otherwise left the tabs light grey in dark mode.
