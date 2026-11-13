@@ -451,7 +451,14 @@ existing confirmation tones. Timing and safety rules are unchanged.
 
 Wake retry fix (1.0.8): a failed/overlong attempt rearms after a brief 0.2-second opening,
 not another full one-second opening. Reclosing fists after an incomplete final opening
-starts a fresh 1.5-3-second attempt, with a new ready beep. Imperfect final palms restart
+starts a fresh 1-3-second attempt, with a new ready beep. Imperfect final palms restart
 only the one-second continuous-open timer instead of entering blocked state. Overheld
 fists still cannot rearm without a release; lost/unreadable hands still cancel attempts.
 Regression tests reproduce all three formerly blocked retry cases.
+
+Wake startup reliability (1.0.9): minimum fist hold is now 1 second (maximum still 3),
+followed by both palms open for 1 second. Once fists are recognized, use FIST_KEEP like
+normal fist tracking instead of restarting on every strict FIST_CURL misread. The wake
+visibility check allows fully visible landmarks inside the image's old 2% edge margin.
+Unreadable, missing or actually clipped hands still cancel. Once-per-second wake diagnostics
+record phase, hand count, extensions, thumb spread and visibility to diagnose live failures.

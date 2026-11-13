@@ -51,12 +51,12 @@ class WakeTests(unittest.TestCase):
 
     def test_short_hold_and_single_hand_do_not_enable(self):
         self.feed("open",.6)
-        self.feed("fists",1.2)
+        self.feed("fists",.7)
         self.feed("open",.6)
         self.assertTrue(self.e.gestures_off)
-        self.feed("fists",1)
+        self.feed("fists",.7)
         self.feed("one",1)
-        self.feed("fists",1)
+        self.feed("fists",.7)
         self.feed("open",1.2)
         self.assertTrue(self.e.gestures_off)
 
@@ -70,7 +70,7 @@ class WakeTests(unittest.TestCase):
             self.assertTrue(self.e.gestures_off)
 
     def test_ready_beeps_once_and_overhold_beeps_once(self):
-        self.feed("fists",1.2)
+        self.feed("fists",.7)
         self.assertEqual(self.feedback,[])
         self.feed("fists",.6)
         self.assertEqual(self.feedback,["ready"])
@@ -88,14 +88,14 @@ class WakeTests(unittest.TestCase):
         self.assertEqual(self.feedback,["ready"])
 
     def test_short_or_lost_hold_does_not_give_ready_feedback(self):
-        self.feed("fists",1)
+        self.feed("fists",.7)
         self.feed("lost",.1)
-        self.feed("fists",1)
+        self.feed("fists",.7)
         self.feed("open",1.2)
         self.assertEqual(self.feedback,[])
 
     def test_minimum_and_maximum_hold_are_accepted(self):
-        for duration in (1.5,3):
+        for duration in (1,3):
             self.setUp()
             self.feed("fists",duration)
             self.feed("open",1.2)
@@ -149,6 +149,30 @@ class WakeTests(unittest.TestCase):
             self.feed("open",1.2)
             self.assertFalse(self.e.gestures_off)
         self.assertEqual(self.feedback,["ready"]*3)
+
+    def test_fist_tracking_hysteresis_survives_looser_folded_frames(self):
+        self.feed("fists",.4)
+        # FIST_KEEP tolerates a rotated fist whose fingers read 1.4 after recognition.
+        for _ in range(27):
+            hands=[V.make(px=.3,label="Left",fist=True),V.make(px=.7,label="Right",fist=True)]
+            for h in hands: h.__dict__["ext"]=[1.4]*4
+            self.e.update(hands,self.t)
+            if self.e.wake.feedback: self.feedback.append(self.e.wake.feedback)
+            self.t+=1/30
+        self.assertIn("ready",self.feedback)
+        self.feed("open",1.2)
+        self.assertFalse(self.e.gestures_off)
+
+    def test_fully_visible_hand_inside_old_edge_margin_can_activate(self):
+        wake=hm.GestureWake()
+        for k in range(75):
+            hands=[V.make(px=.3,label="Left",fist=k<36),V.make(px=.7,label="Right",fist=k<36)]
+            for i,h in enumerate(hands):
+                h.key=str(i)
+                h.img[0]=(.01,h.img[0][1])
+            result=wake.update(hands,k/30)
+            if result: break
+        self.assertTrue(result)
 
     def test_completion_times_out_and_tray_still_works(self):
         self.feed("open",.6)

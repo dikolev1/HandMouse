@@ -6,7 +6,7 @@ Windows asks for **administrator approval** when you launch the app, so gesture 
 control the Windows on-screen keyboard. Approve the UAC prompt with your physical mouse or keyboard.
 Cancelling leaves the app closed.
 
-At every launch, the **camera is on and gestures are off** (orange tray badge). Hold **both fists for 1.5-3 seconds**, then keep **both palms open for 1 second**
+At every launch, the **camera is on and gestures are off** (orange tray badge). Hold **both fists for 1-3 seconds**, then keep **both palms open for 1 second**
 to enable them. You can also use the tray icon's **Gestures on**.
 
 ## Start
@@ -15,7 +15,7 @@ to enable them. You can also use the tray icon's **Gestures on**.
   the clock (click the **^** arrow if Windows hides it, and drag it onto the taskbar to keep it visible).
 - **Left-click** the tray icon: stop / resume tracking (grey icon with a red badge = stopped, camera off).
   A grey icon with an **orange** badge means gestures are off (two fists); the camera still watches for the
-  fists held for 1.5-3 seconds → palms open for 1 second sequence to enable them.
+  fists held for 1-3 seconds → palms open for 1 second sequence to enable them.
 - **Right-click** the tray icon:
   - **Camera & log window** shows what the app sees: green = main hand, orange = second hand, big text = what
     is happening now. The panel on the right shows each hand's live numbers and a log of every click,
@@ -60,7 +60,7 @@ scroll, swipe windows, press buttons 4/5 and change the volume instead of giving
 | Mouse button 5 (Forward) | Palm towards the camera, fingers up: fold the thumb across the palm onto the palm under the ring / little finger (anywhere from their base about halfway down to the wrist) |
 | Volume | Thumbs-up (fingers folded, thumb out), held a moment. Thumb straight up = 100%; turn the hand until the thumb points down to lower it to 0%. Tuck the thumb in to stop. A fist with the thumb tucked in still scrolls |
 | Scroll | Make a fist. Move it down to scroll down, up to scroll up, left / right to scroll sideways; the further from where you closed it, the faster. Only the direction you moved further scrolls, so a little drift doesn't scroll sideways. Open the hand to stop |
-| Gestures off / on | Hold **both** hands as fists for a second (beep first). While off, nothing reacts to your hands except the deliberate activation sequence: both fists held for 1.5-3 seconds → both palms open for 1 second. Holding the fists switches only once; open a hand (or take your hands out of view) before switching again. A full stop (camera off) is on the tray icon or Ctrl+Alt+H |
+| Gestures off / on | Hold **both** hands as fists for a second (beep first). While off, nothing reacts to your hands except the deliberate activation sequence: both fists held for 1-3 seconds → both palms open for 1 second. Holding the fists switches only once; open a hand (or take your hands out of view) before switching again. A full stop (camera off) is on the tray icon or Ctrl+Alt+H |
 
 ## Left hand: keyboard shortcuts
 
@@ -294,7 +294,14 @@ existing confirmation tones. Timing and safety rules are unchanged.
 
 Wake retry fix (1.0.8): a failed/overlong attempt rearms after a brief 0.2-second opening,
 not another full one-second opening. Reclosing fists after an incomplete final opening
-starts a fresh 1.5-3-second attempt, with a new ready beep. Imperfect final palms restart
+starts a fresh 1-3-second attempt, with a new ready beep. Imperfect final palms restart
 only the one-second continuous-open timer instead of entering blocked state. Overheld
 fists still cannot rearm without a release; lost/unreadable hands still cancel attempts.
 Regression tests reproduce all three formerly blocked retry cases.
+
+Wake startup reliability (1.0.9): minimum fist hold is now 1 second (maximum still 3),
+followed by both palms open for 1 second. Once fists are recognized, use FIST_KEEP like
+normal fist tracking instead of restarting on every strict FIST_CURL misread. The wake
+visibility check allows fully visible landmarks inside the image's old 2% edge margin.
+Unreadable, missing or actually clipped hands still cancel. Once-per-second wake diagnostics
+record phase, hand count, extensions, thumb spread and visibility to diagnose live failures.
