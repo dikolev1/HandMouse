@@ -116,6 +116,40 @@ class WakeTests(unittest.TestCase):
         self.feed("open",1.2)
         self.assertFalse(self.e.gestures_off)
 
+    def test_retry_after_overhold_only_needs_brief_release(self):
+        self.feed("fists",4)
+        self.feed("open",.35)
+        self.feed("fists",2)
+        self.feed("open",1.2)
+        self.assertFalse(self.e.gestures_off)
+        self.assertEqual(self.feedback,["ready","overheld","ready"])
+
+    def test_retry_after_incomplete_final_open(self):
+        self.feed("fists",2)
+        self.feed("open",.5)
+        self.feed("fists",2)
+        self.feed("open",1.2)
+        self.assertFalse(self.e.gestures_off)
+        self.assertEqual(self.feedback,["ready","ready"])
+
+    def test_partial_final_open_restarts_only_open_timer(self):
+        self.feed("fists",2)
+        self.feed("open",.5)
+        self.feed("partial",.1)
+        self.feed("open",.8)
+        self.assertTrue(self.e.gestures_off)
+        self.feed("open",.4)
+        self.assertFalse(self.e.gestures_off)
+
+    def test_multiple_pause_and_wake_cycles(self):
+        for _ in range(3):
+            self.e.set_gestures(False)
+            self.feed("open",.2)
+            self.feed("fists",2)
+            self.feed("open",1.2)
+            self.assertFalse(self.e.gestures_off)
+        self.assertEqual(self.feedback,["ready"]*3)
+
     def test_completion_times_out_and_tray_still_works(self):
         self.feed("open",.6)
         self.feed("fists",8)

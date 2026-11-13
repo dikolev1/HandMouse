@@ -257,3 +257,10 @@ exceeded three seconds or the palms did not open within the transition window. G
 stay off. Each cue fires once per attempt, not per frame; release/reset allows a new attempt.
 Cues use the existing nonblocking beep helper and respect SOUNDS. Activation still has its
 existing confirmation tones. Timing and safety rules are unchanged.
+
+Wake retry fix (1.0.8): a failed/overlong attempt rearms after a brief 0.2-second opening,
+not another full one-second opening. Reclosing fists after an incomplete final opening
+starts a fresh 1.5-3-second attempt, with a new ready beep. Imperfect final palms restart
+only the one-second continuous-open timer instead of entering blocked state. Overheld
+fists still cannot rearm without a release; lost/unreadable hands still cancel attempts.
+Regression tests reproduce all three formerly blocked retry cases.

@@ -71,7 +71,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.0.7"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.0.8"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60
@@ -1840,7 +1840,7 @@ class GestureWake:
     def hint(self):
         return {"fists": "hold both fists for 1.5-3 seconds", "hold": "hold 1.5-3 seconds, then open both palms",
                 "opening": "open both palms", "release": "keep both palms open for 1 second",
-                "blocked": "open both palms for 1 second, then try again"}[self.phase]
+                "blocked": "briefly open both palms, then try again"}[self.phase]
 
     def update(self, hands, now):
         self.feedback = None
@@ -1878,8 +1878,15 @@ class GestureWake:
             elif opened:
                 self.phase, self.since = "release", now
         elif self.phase == "release":
-            if not opened:
-                self.phase, self.since = "blocked", None
+            if fists:
+                # The previous attempt opened too briefly; this is a fresh fist hold.
+                self.reset()
+                self.pair, self.last = pair, now
+                self.phase, self.since = "hold", now
+            elif not opened:
+                self.since = None        # imperfect palms restart only the continuous-open timer
+            elif self.since is None:
+                self.since = now
             elif now-self.since >= 1 - 1e-6:
                 self.reset()
                 return True
@@ -1888,8 +1895,8 @@ class GestureWake:
                 self.since = None
             elif self.since is None:
                 self.since = now
-            elif now-self.since >= 1 - 1e-6:
-                self.reset()            # an overlong hold must be released; never starts another timer while closed
+            elif now-self.since >= .2 - 1e-6:
+                self.reset()            # briefly release an overlong hold before retrying; never rearm while closed
         return False
 
 
