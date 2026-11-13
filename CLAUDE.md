@@ -19,6 +19,7 @@ care that it works reliably; when unsure, measure before claiming something help
 | File | What it is |
 |---|---|
 | `hand_mouse.py` | The whole app. Settings are the UPPER_CASE constants at the top (lines ~57-260), each with a comment. |
+| `app_theme.py` | Shared appearance preferences, Windows Device-mode detection and per-thread widget styling. |
 | `gesture_profiles.py`, `gesture_profiles_ui.py` | Saved profiles, binding output routing and the Tk profile editor. |
 | `gesture_custom.py`, `gesture_custom_ui.py` | Recorded pose/sequence recognition, guided recording and no-input testing. |
 | `tests/` | Test suites with fake hands, fake mouse, fake camera and fake window. Run `python tests/run_tests.py`. |
@@ -508,3 +509,17 @@ Only landmark templates are saved by recording, never images (existing debug fea
 Tests cover geometry invariance, ambiguity, sequences, swipe latching, retries, capture/test no-input,
 modifier+cursor coexistence, reserved pause, persistence and real Tk record/test/save/rebind/remove.
 User webcam calibration still needs their own recorded examples and recognition testing.
+
+Appearance themes (1.2.1): Tray -> Theme -> Light / Dark / Device, also a Theme dropdown
+in Cursor sensitivity settings. Device is the default and follows Windows app colors, refreshed
+at most once/second. Saved as theme in the existing atomic state file; changing themes does
+not affect sensitivity, profiles or gesture activation. app_theme.py owns the thread-safe
+ThemeManager and per-Tk-thread attach_theme; deploy it BEFORE updating hand_mouse.py.
+Each Tk interpreter uses ttk clam palettes for readable fields, selection, buttons and trees;
+record/test Toplevel windows follow the same shared choice. Polling is removed on destroy,
+and no Tk roots are held globally or touched across threads. Camera/log panel and paused-camera
+background follow the palette; live camera pixels/hand overlay semantics are unchanged.
+Generated help follows the chosen theme when opened (Device uses browser OS preference).
+Windows menus/native file dialogs are rendered by Windows. Native title bars use the documented
+DWM immersive-dark attribute where supported; failure leaves normal system chrome intact.
+Tests cover Device refresh, persistence, real root/child widgets, the settings selector and panel pixels.

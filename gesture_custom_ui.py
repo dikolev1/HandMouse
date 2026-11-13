@@ -8,6 +8,8 @@ def record_dialog(parent,runtime,existing,parse_keys,on_save):
     from gesture_custom import new_definition,validate_custom
     from gesture_profiles_ui import TYPE_LABELS
     win=tk.Toplevel(parent)
+    from app_theme import attach_theme
+    attach_theme(win)
     win.title("Hand Mouse - Record custom gesture")
     win.geometry("740x650")
     win.minsize(700,610)
@@ -132,6 +134,8 @@ def test_dialog(parent,runtime,definition):
     import tkinter as tk
     from tkinter import ttk
     win=tk.Toplevel(parent)
+    from app_theme import attach_theme
+    attach_theme(win)
     win.title("Hand Mouse - Test "+definition["name"])
     win.geometry("620x210")
     status=tk.StringVar(value="Perform the gesture. No keys or mouse actions are sent.")

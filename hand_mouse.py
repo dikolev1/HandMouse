@@ -62,6 +62,7 @@ import sys
 import threading
 import time
 import urllib.request
+from app_theme import THEME, attach_theme, help_style
 from dataclasses import dataclass
 
 # Media Foundation (the camera driver that gives full speed on many webcams) opens much faster without its
@@ -71,7 +72,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.2.0"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.2.1"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60
@@ -3090,7 +3091,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
 def open_help():
     try:
         with open(HELP_PATH, "w", encoding="utf-8") as f:
-            f.write(HELP_HTML)
+            f.write(HELP_HTML.replace("</head>", help_style() + "</head>"))
         os.startfile(HELP_PATH)
     except Exception:
         log.exception("could not open the gestures help")
@@ -3260,12 +3261,20 @@ class SensitivityWindow:
             from tkinter import ttk
             root = tk.Tk()
             root.withdraw()
+            attach_theme(root)
             root.title("Hand Mouse - Cursor sensitivity")
             root.resizable(False, False)
             frame = ttk.Frame(root, padding=20)
             frame.pack(fill="both", expand=True)
             ttk.Label(frame, text="Cursor sensitivity", font=("Segoe UI", 13, "bold")).pack(anchor="w")
             ttk.Label(frame, text="Lower: more hand movement. Higher: faster cursor.").pack(anchor="w", pady=(6, 14))
+            theme_row = ttk.Frame(frame)
+            theme_row.pack(fill="x", pady=(0, 12))
+            ttk.Label(theme_row, text="Theme").pack(side="left")
+            theme_value = tk.StringVar(value=THEME.mode.title())
+            theme_box = ttk.Combobox(theme_row, textvariable=theme_value, values=("Light", "Dark", "Device"), state="readonly", width=16)
+            theme_box.pack(side="right")
+            theme_box.bind("<<ComboboxSelected>>", lambda event: THEME.set(theme_value.get().lower()))
             value = tk.DoubleVar(value=normalize_sensitivity(self.get_value()) * 100)
             text = tk.StringVar(value=f"{value.get():.0f}%")
             ttk.Label(frame, textvariable=text, font=("Segoe UI", 12)).pack()
@@ -3319,6 +3328,7 @@ class SensitivityWindow:
                     flush()
                     root.destroy()
                     return
+                theme_value.set(THEME.mode.title())
                 if self.show_evt.is_set():
                     self.show_evt.clear()
                     screenshot.set(self.get_screenshot())
@@ -3456,6 +3466,11 @@ class TrayIcon:
                             lambda icon, it: self.on_camera(index),
                             checked=lambda it: self.camera_index == index, radio=True)
 
+            def theme_item(label):
+                mode = label.lower()
+                return item(label, lambda icon, it: self._set_theme(mode),
+                            checked=lambda it: THEME.mode == mode, radio=True)
+
             menu = pystray.Menu(
                 item(lambda it: "Hand Mouse: " + self._state_text(), lambda icon, it: None, enabled=False),
                 pystray.Menu.SEPARATOR,
@@ -3472,6 +3487,7 @@ class TrayIcon:
                 item("Gestures help", lambda icon, it: open_help()),
                 item("Cursor sensitivity...", lambda icon, it: self.on_sensitivity()),
                 item("Gesture profiles...", lambda icon, it: self.on_profiles()),
+                item("Theme", pystray.Menu(*(theme_item(label) for label in ("Light", "Dark", "Device")))) ,
                 pystray.Menu.SEPARATOR,
                 item("Start with Windows", toggle_autostart, checked=lambda it: autostart_enabled()),
                 item("Re-learn my hand size", lambda icon, it: self.on_relearn()),
@@ -3485,6 +3501,10 @@ class TrayIcon:
         except Exception:
             log.exception("could not create the tray icon")
             self.icon = None
+
+    def _set_theme(self, mode):
+        THEME.set(mode)
+        self.refresh()
 
     def _run(self):
         try:
@@ -4286,7 +4306,11 @@ def _wrap(text: str, width: int) -> list:
     return out
 
 
-def _event_color(msg: str) -> tuple:
+def _event_color(msg: str, dark: bool = True) -> tuple:
+    if not dark:
+        return {(120,220,255):(0,96,164), (255,200,120):(160,102,23),
+                (230,150,230):(156,62,133), (110,110,255):(49,49,189),
+                (150,230,150):(60,121,35)}.get(_event_color(msg), THEME.bgr("fg"))
     m = msg.lower()
     if "click" in m or "button" in m:
         return (120, 220, 255)          # clicks and buttons: orange-yellow
@@ -4303,17 +4327,17 @@ def _event_color(msg: str) -> tuple:
 
 def draw_panel(cv2, np, height: int, engine, paused: bool):
     """Side panel of the camera window: what each hand is doing right now, and the latest events."""
-    panel = np.full((height, PANEL_W, 3), (32, 30, 28), np.uint8)
+    panel = np.full((height, PANEL_W, 3), THEME.bgr("bg"), np.uint8)
     font = cv2.FONT_HERSHEY_SIMPLEX
     y = 30
     now_text = "STOPPED" if paused else (engine.gesture.upper() if engine.gesture else "-")
-    cv2.putText(panel, "NOW:", (14, y), font, 0.6, (170, 170, 170), 1, cv2.LINE_AA)
-    cv2.putText(panel, now_text, (80, y), font, 0.75, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.putText(panel, "NOW:", (14, y), font, 0.6, THEME.bgr("muted"), 1, cv2.LINE_AA)
+    cv2.putText(panel, now_text, (80, y), font, 0.75, THEME.bgr("fg"), 2, cv2.LINE_AA)
     y += 26
     limit = height * 0.5 - 64
     for line in engine.status:
-        color = (150, 230, 150) if line.startswith("MAIN") else (
-            (120, 190, 255) if line.startswith("SECOND") else (210, 210, 210))
+        color = THEME.bgr("green") if line.startswith("MAIN") else (
+            THEME.bgr("orange") if line.startswith("SECOND") else THEME.bgr("fg"))
         for part in _wrap(line, 58):
             if y > limit:
                 break
@@ -4323,22 +4347,22 @@ def draw_panel(cv2, np, height: int, engine, paused: bool):
             f"(t-ring-base) below {SIDE_TOUCH_ON:.2f}. fingers (index..pinky): below {FIST_CURL:.2f} = folded.")
     hy = int(height * 0.5) - 52
     for part in _wrap(hint, 64):
-        cv2.putText(panel, part, (14, hy), font, 0.36, (130, 130, 130), 1, cv2.LINE_AA)
+        cv2.putText(panel, part, (14, hy), font, 0.36, THEME.bgr("muted"), 1, cv2.LINE_AA)
         hy += 15
     y = int(height * 0.5) + 6
-    cv2.line(panel, (10, y - 18), (PANEL_W - 10, y - 18), (80, 80, 80), 1)
-    cv2.putText(panel, "LOG (newest at the bottom)", (14, y), font, 0.5, (170, 170, 170), 1, cv2.LINE_AA)
+    cv2.line(panel, (10, y - 18), (PANEL_W - 10, y - 18), THEME.bgr("border"), 1)
+    cv2.putText(panel, "LOG (newest at the bottom)", (14, y), font, 0.5, THEME.bgr("muted"), 1, cv2.LINE_AA)
     y += 8
     rows = []
     for created, level, msg in EVENTS.latest(40):
         stamp = time.strftime("%H:%M:%S", time.localtime(created))
         parts = _wrap(msg, 46)
-        rows.append((stamp, parts[0], _event_color(msg)))
-        rows += [("", p, _event_color(msg)) for p in parts[1:]]
+        rows.append((stamp, parts[0], _event_color(msg, THEME.effective() == "dark")))
+        rows += [("", p, _event_color(msg, THEME.effective() == "dark")) for p in parts[1:]]
     max_rows = max((height - y - 10) // 18, 1)
     for stamp, text, color in rows[-max_rows:]:
         y += 18
-        cv2.putText(panel, stamp, (14, y), font, 0.4, (140, 140, 140), 1, cv2.LINE_AA)
+        cv2.putText(panel, stamp, (14, y), font, 0.4, THEME.bgr("muted"), 1, cv2.LINE_AA)
         cv2.putText(panel, text, (92, y), font, 0.42, color, 1, cv2.LINE_AA)
     return panel
 
@@ -4490,6 +4514,7 @@ def run(preview: bool) -> bool:
     profile_requests = queue.SimpleQueue()
     mouse = ProfileMouse(WinMouse(), parse_keys)
     state = load_state()
+    THEME.configure(state.get("theme", "device"), lambda mode: save_state(theme=mode))
     engine = Engine(mouse, mouse.left, mouse.top, mouse.width, mouse.height,
                     ref_palm=state.get("ref_palm"), on_ref_learned=lambda v: save_state(ref_palm=v),
                     box_state=state.get("box"), main_side=state.get("main_side", "right"),
@@ -4626,6 +4651,7 @@ def run(preview: bool) -> bool:
     fps, frames, fps_t = 0.0, 0, time.monotonic()
     fails = 0
     stop_warned = False
+    theme_shown = THEME.mode
     fists_tip_shown = False
     cam_fps, cam_seq, dim_since, light_tip_shown, frames_total = 0.0, 0, None, False, 0
     script_mtime = os.path.getmtime(SCRIPT)
@@ -4667,6 +4693,9 @@ def run(preview: bool) -> bool:
                 restart = True
                 break
             mono = time.monotonic()
+            if THEME.mode != theme_shown:
+                theme_shown = THEME.mode
+                tray.refresh()
             requested_profile = None
             while not profile_requests.empty():
                 requested_profile = profile_requests.get_nowait()
@@ -4713,7 +4742,7 @@ def run(preview: bool) -> bool:
                     cap.release()
                     cap = None
                 if view_evt.is_set():
-                    blank = np.zeros((540, 960, 3), np.uint8)
+                    blank = np.full((540, 960, 3), THEME.bgr("bg"), np.uint8)
                     engine.status = ["stopped - click the tray icon, press p or Ctrl+Alt+H to resume"]
                     engine.gesture = ""
                     draw_preview(cv2, blank, [], engine, 0.0, True, text_on_image=False)

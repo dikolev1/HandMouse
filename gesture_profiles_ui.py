@@ -40,6 +40,8 @@ class ProfilesWindow:
         from tkinter import ttk, messagebox, simpledialog, filedialog
         root=tk.Tk()
         root.withdraw()
+        from app_theme import attach_theme
+        attach_theme(root)
         root.title("Hand Mouse - Gesture profiles")
         root.minsize(780,640)
         root.geometry("900x720")
@@ -62,7 +64,7 @@ class ProfilesWindow:
         tree_frame.grid(row=3,column=0,sticky="nsew")
         tree_frame.columnconfigure(0,weight=1)
         tree_frame.rowconfigure(0,weight=1)
-        tree=ttk.Treeview(tree_frame,columns=("gesture","action"),show="headings",selectmode="browse")
+        tree=ttk.Treeview(tree_frame,columns=("gesture","action"),show="headings",selectmode="browse",height=7)
         tree.heading("gesture",text="Gesture")
         tree.heading("action",text="Assigned action")
         tree.column("gesture",width=390,minwidth=240)

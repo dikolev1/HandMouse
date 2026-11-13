@@ -40,6 +40,13 @@ to enable them. You can also use the tray icon's **Gestures on**.
   - **Close Hand Mouse**.
 - Double-clicking the desktop icon while the app is running opens the camera & log window.
 
+## Appearance
+
+Choose **Tray → Theme → Light / Dark / Device**, or use the Theme dropdown in
+**Cursor sensitivity...**. The choice applies live and is remembered after restart.
+**Device** follows your Windows app-color setting. Settings, profile/recording windows and
+the camera log panel share the theme; the camera image itself keeps its original colors.
+
 ## Saved gesture profiles
 
 Right-click the tray icon → **Gesture profiles...**. **Basic** preserves the existing gestures and
@@ -362,3 +369,17 @@ normal fist tracking instead of restarting on every strict FIST_CURL misread. Th
 visibility check allows fully visible landmarks inside the image's old 2% edge margin.
 Unreadable, missing or actually clipped hands still cancel. Once-per-second wake diagnostics
 record phase, hand count, extensions, thumb spread and visibility to diagnose live failures.
+
+Appearance themes (1.2.1): Tray -> Theme -> Light / Dark / Device, also a Theme dropdown
+in Cursor sensitivity settings. Device is the default and follows Windows app colors, refreshed
+at most once/second. Saved as theme in the existing atomic state file; changing themes does
+not affect sensitivity, profiles or gesture activation. app_theme.py owns the thread-safe
+ThemeManager and per-Tk-thread attach_theme; deploy it BEFORE updating hand_mouse.py.
+Each Tk interpreter uses ttk clam palettes for readable fields, selection, buttons and trees;
+record/test Toplevel windows follow the same shared choice. Polling is removed on destroy,
+and no Tk roots are held globally or touched across threads. Camera/log panel and paused-camera
+background follow the palette; live camera pixels/hand overlay semantics are unchanged.
+Generated help follows the chosen theme when opened (Device uses browser OS preference).
+Windows menus/native file dialogs are rendered by Windows. Native title bars use the documented
+DWM immersive-dark attribute where supported; failure leaves normal system chrome intact.
+Tests cover Device refresh, persistence, real root/child widgets, the settings selector and panel pixels.
