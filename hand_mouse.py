@@ -18,7 +18,7 @@ hand swap the main hand, with one or both hands visible; remembered after restar
                   until the thumb points down to lower it to 0%
   scroll          make a fist and move it up / down (or left / right) from where you closed it;
                   further = faster. Open the hand to stop.
-  gestures off/on hold BOTH hands as fists for about a second: all gestures stop except two fists, which
+  gestures off hold BOTH hands as fists for about a second; enable with open palms / fists 2 s / open palms, which
                   turn them back on. A full stop (camera off) is in the tray icon / Ctrl+Alt+H.
 
 Keyboard shortcuts with the other hand (your LEFT hand); pinches act when the thumb lets go:
@@ -35,7 +35,7 @@ Keyboard shortcuts with the other hand (your LEFT hand); pinches act when the th
 L-shaped pose (index up, thumb out sideways, other three folded), held briefly:
   physical LEFT hand = Backspace (hold to repeat); physical RIGHT hand = Enter (once per pose).
 
-At every start the camera is ON and gestures are OFF. Two fists or the tray's Gestures on enables them.
+At every start the camera is ON and gestures are OFF. Open both palms, hold both fists 2 seconds, then open both palms; or use the tray's Gestures on.
 
 Tray icon (next to the clock): left-click stops / resumes tracking; right-click for the menu
 (Camera & log window, Gestures on, Cursor sensitivity slider, Stop / Resume tracking, Gestures help, Start with Windows, Re-learn my hand size,
@@ -71,7 +71,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.0.4"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.0.5"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60
@@ -1826,6 +1826,57 @@ class Track:
         self.side_score = 0             # > 0: your right hand, < 0: your left hand (votes over the frames)
 
 
+class GestureWake:
+    """Open palms -> two-second fist hold -> open palms, with the same two visible hands."""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.phase, self.since, self.deadline = "open", None, None
+        self.pair, self.last = None, None
+
+    @property
+    def hint(self):
+        return {"open": "show both open palms", "fists": "hold both fists for 2 seconds",
+                "hold": "keep both fists closed for 2 seconds", "release": "open both palms to enable"}[self.phase]
+
+    def update(self, hands, now):
+        pair = frozenset(h.key for h in hands)
+        if (len(hands) != 2 or any(h.unsure or not fully_in_view(h) for h in hands)
+                or (self.pair is not None and pair != self.pair)
+                or (self.last is not None and now-self.last > .4)
+                or (self.deadline is not None and now > self.deadline)):
+            self.reset()
+            return False
+        self.pair, self.last = pair, now
+        opened = all(min(h.ext) > GRAB_OPEN for h in hands)
+        fists = all(is_fist(h) for h in hands)
+        if self.phase == "open":
+            if not opened:
+                self.since = None
+            elif self.since is None:
+                self.since = now
+            elif now-self.since >= .4:
+                self.phase, self.since, self.deadline = "fists", None, now+5
+        elif self.phase == "fists":
+            if fists:
+                self.phase, self.since, self.deadline = "hold", now, None
+        elif self.phase == "hold":
+            if not fists:
+                self.reset()
+            elif now-self.since >= 2:
+                self.phase, self.since, self.deadline = "release", None, now+5
+        elif self.phase == "release":
+            if opened:
+                self.since = now if self.since is None else self.since
+                if now-self.since >= .3:
+                    self.reset()
+                    return True
+            else:
+                self.since = None
+        return False
+
+
 class Engine:
     """Turns tracked hands into mouse actions. Independent of camera and OS (testable)."""
 
@@ -1873,6 +1924,7 @@ class Engine:
         self.diag = None
         self.scroll_marks: list[tuple] = []     # (anchor_y, current_y) for the preview
         self.both_fists_since = None
+        self.wake = GestureWake()
         self.gestures_off = not gestures_on   # camera stays on; run() deliberately starts with gestures off
         self.gestures_request = None    # True / False: turn gestures on / off (from the tray, another thread)
         self.gestures_changed = None    # "on" / "off" once after a change, for the main loop (beep, tray)
@@ -1923,12 +1975,13 @@ class Engine:
         if off == self.gestures_off:
             return
         self.gestures_off = off
+        self.wake.reset()
         self.both_fists_since = None
         self.release_all(now, keep_fists=True)
         for key in self.fists:              # forget fist states, but keep the hands known (mid-frame)
             self.fists[key] = FistScroll()
         if off:
-            log.info("gestures off (%s) - hold both fists again to turn them back on", how)
+            log.info("gestures off (%s) - open both palms, hold both fists 2 s, then open both palms to enable", how)
         else:
             self.cursor.reset(keep_position=True)
             self.last_tip = self.pending_tip = None
@@ -2083,6 +2136,7 @@ class Engine:
             self.fist_stop_armed = False    # don't count fists that were already closed
 
         if not hands:
+            self.wake.reset()
             self._rearm(True, now)              # hands out of view also allows the next two-fist switch
             if SECOND_HAND_KEYS and not self.gestures_off:
                 self.keys.update(None, now)     # a waiting single tap still acts; a held Alt is let go
@@ -2093,7 +2147,7 @@ class Engine:
             if self.want_status:
                 self.status.append("no hands")
                 if self.gestures_off:
-                    self.status.insert(0, "GESTURES OFF - hold both fists 1 s to turn them back on")
+                    self.status.insert(0, "GESTURES OFF - " + self.wake.hint)
             if self.gestures_off:
                 self.gesture = "gestures off"
             return
@@ -2185,24 +2239,34 @@ class Engine:
         if two_fists:
             self.last_two_fists = now
         self._rearm(any(not h.unsure and sorted(h.ext)[1] > GRAB_OPEN for h in hands), now)
-        holding = two_fists or (self.both_fists_since is not None and now - self.last_two_fists < 0.25)
-        if STOP_WITH_TWO_FISTS and holding and self.fist_stop_armed:
-            if self.both_fists_since is None:
-                self.both_fists_since = now
-                log.info("both fists: gestures %s in %.1f s unless a hand opens",
-                         "on" if self.gestures_off else "off", STOP_HOLD)
-            rate = hrate = 0.0
-            self.scroll_marks, self.hscroll_marks = [], []
-            if now - self.both_fists_since >= STOP_HOLD:
+        woke = False
+        if self.gestures_off:
+            self.both_fists_since = None
+            if STOP_WITH_TWO_FISTS and self.wake.update(hands, now):
                 self.fist_stop_armed = False
-                self._set_gestures_off(not self.gestures_off, now, "two fists")
+                self._set_gestures_off(False, now, "open-fists-open sequence")
+                woke = True
         else:
-            if self.both_fists_since is not None:
-                log.info("both fists released: nothing changed")
-                self.both_fists_since = None
-            if two_fists and STOP_WITH_TWO_FISTS:
-                rate = hrate = 0.0              # still holding the fists from the last stop
-
+            holding = two_fists or (self.both_fists_since is not None and now - self.last_two_fists < 0.25)
+            if STOP_WITH_TWO_FISTS and holding and self.fist_stop_armed:
+                if self.both_fists_since is None:
+                    self.both_fists_since = now
+                    log.info("both fists: gestures %s in %.1f s unless a hand opens",
+                             "on" if self.gestures_off else "off", STOP_HOLD)
+                rate = hrate = 0.0
+                self.scroll_marks, self.hscroll_marks = [], []
+                if now - self.both_fists_since >= STOP_HOLD:
+                    self.fist_stop_armed = False
+                    self._set_gestures_off(not self.gestures_off, now, "two fists")
+            else:
+                if self.both_fists_since is not None:
+                    log.info("both fists released: nothing changed")
+                    self.both_fists_since = None
+                if two_fists and STOP_WITH_TWO_FISTS:
+                    rate = hrate = 0.0              # still holding the fists from the last stop
+        if woke:
+            self.gesture = "gestures on"
+            return  # the final opening cannot also emit a click or shortcut
         if not self.gestures_off and self._switch_main(hands, now):
             self.release_all(now)
             self.cursor.reset(keep_position=True)
@@ -2216,7 +2280,7 @@ class Engine:
             self.gesture = "gestures off"
             if self.want_status:
                 self._status(hands, main, 0.0, frozen=True)
-                self.status.insert(0, "GESTURES OFF - hold both fists 1 s to turn them back on")
+                self.status.insert(0, "GESTURES OFF - " + self.wake.hint)
             return
 
         for h, side in l_fired:
@@ -2889,7 +2953,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  kbd{background:var(--card);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 6px;font:13px Consolas,monospace}
 </style></head><body><main>
 <h1>Hand Mouse</h1>
-<p class="lead">The camera starts on with gestures off. Hold both fists for a second or use the tray's <b>Gestures on</b>. Your right hand is the main hand unless you change it.</p>
+<p class="lead">The camera starts on with gestures off. Show both open palms, hold both fists for two seconds, then open both palms again; or use the tray's <b>Gestures on</b>. Your right hand is the main hand unless you change it.</p>
 <div class="grid">
  <div class="card"><h2>Move the cursor</h2><p>Point with the index finger of your main hand. Slow movements are precise, fast movements cover the whole screen.</p></div>
  <div class="card"><h2>Left click</h2><p>Touch your thumb to your <b>middle</b> fingertip. Keep touching and move to drag.</p></div>
@@ -2899,7 +2963,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Mouse button 5 (Forward)</h2><p>Palm towards the camera, fingers up. Fold your thumb across the palm onto the <b>palm under your ring / little finger</b> (from their base about halfway down).</p></div>
  <div class="card"><h2>Volume</h2><p><b>Thumbs-up</b> (fingers folded, thumb out) and hold it a moment. Thumb straight up = 100%. Turn your hand until the thumb points down to lower the volume step by step to 0%. Tuck the thumb in to stop.</p></div>
  <div class="card"><h2>Scroll</h2><p>Make a <b>fist</b>. Move the fist down to scroll down, up to scroll up, left / right to scroll sideways. The further from where you closed it, the faster. Open the hand to stop.</p></div>
- <div class="card"><h2>Gestures off / on</h2><p>Hold <b>both</b> hands as fists for a second (beep first). Gestures turn off (orange badge on the tray icon): the cursor and all gestures ignore your hands, except two fists, which turn them back on the same way. To stop the camera completely, click the tray icon.</p></div>
+ <div class="card"><h2>Gestures off / on</h2><p>Hold <b>both</b> hands as fists for a second (beep first). Gestures turn off (orange badge on the tray icon): the cursor and all gestures ignore your hands. To enable again: show both open palms, hold both fists for two seconds, then open both palms again. Gestures stay off until that final opening. To stop the camera completely, click the tray icon.</p></div>
 </div>
 <h3>Left hand: keyboard shortcuts</h3>
 <p class="lead">With your other hand (the left one). A pinch acts when the thumb lets go. These are the default shortcuts; they can be changed in <code>SECOND_KEYS</code> at the top of hand_mouse.py.</p>
@@ -3307,7 +3371,7 @@ class TrayIcon:
                 pystray.Menu.SEPARATOR,
                 item("Camera", pystray.Menu(*(camera_item(index) for index in range(10)))),
                 item("Camera && log window", lambda icon, it: self.on_view(), checked=lambda it: self.view_shown()),
-                item("Gestures on (two fists = on / off)", lambda icon, it: self.on_gestures(),
+                item("Gestures on (open / fists 2 s / open to enable)", lambda icon, it: self.on_gestures(),
                      checked=lambda it: not self.gestures_off(), enabled=lambda it: not self.is_paused()),
                 item(lambda it: "Resume tracking" if self.is_paused() else "Stop tracking",
                      lambda icon, it: self.on_toggle(), default=True),
@@ -3343,11 +3407,11 @@ class TrayIcon:
         return "sleep" if self.gestures_off() else "on"
 
     def _state_text(self) -> str:
-        return {"paused": "stopped", "sleep": "gestures off (two fists to turn on)", "on": "tracking"}[self._state()]
+        return {"paused": "stopped", "sleep": "gestures off (open / fists 2 s / open to enable)", "on": "tracking"}[self._state()]
 
     def _title(self) -> str:
         return {"paused": "Hand Mouse - stopped (click to resume)",
-                "sleep": "Hand Mouse - gestures off: two fists turn them on (click: stop camera)",
+                "sleep": "Hand Mouse - gestures off: open / fists 2 s / open to enable (click: stop camera)",
                 "on": "Hand Mouse - tracking (click to stop)"}[self._state()]
 
     @staticmethod
@@ -4334,7 +4398,7 @@ def run(preview: bool) -> bool:
                     box_state=state.get("box"), main_side=state.get("main_side", "right"),
                     on_main_side=lambda side: main_side_changed(side), gestures_on=False,
                     cursor_sensitivity=state.get("cursor_sensitivity", 1.0))
-    log.info("startup: camera on, gestures off; hold both fists to enable gestures")
+    log.info("startup: camera on, gestures off; open palms / fists 2 s / open palms to enable")
     screenshot_precision = ScreenshotPrecision(engine.cursor, state.get("screenshot_precision", True) is True)
     def set_screenshot_precision(enabled):
         screenshot_precision.set_enabled(enabled)
@@ -4429,7 +4493,7 @@ def run(preview: bool) -> bool:
             return
         choose_camera(index)
         camera_change_evt.set()
-        tray.notify(f"Switching to Camera {index + 1}. Gestures will start off; hold both fists to enable.")
+        tray.notify(f"Switching to Camera {index + 1}. Gestures will start off; open palms / fists 2 s / open palms to enable.")
     tray.on_camera = change_camera
 
     updates = UpdateChecker(tray.notify, quit_evt, state)
@@ -4601,8 +4665,8 @@ def run(preview: bool) -> bool:
                 tray.refresh()
                 if not fists_tip_shown:
                     fists_tip_shown = True
-                    tray.notify("Gestures off: only two fists are watched now. Hold both fists again to turn "
-                                "them back on. To stop the camera, use this icon.")
+                    tray.notify("Gestures off: show both open palms, hold both fists for 2 seconds, then "
+                                "open both palms again to enable. To stop the camera, use this icon.")
             elif changed == "on":
                 beep(660)
                 beep(880)

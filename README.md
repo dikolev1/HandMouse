@@ -6,16 +6,16 @@ Windows asks for **administrator approval** when you launch the app, so gesture 
 control the Windows on-screen keyboard. Approve the UAC prompt with your physical mouse or keyboard.
 Cancelling leaves the app closed.
 
-At every launch, the **camera is on and gestures are off** (orange tray badge). Hold both fists for a
-second, or right-click the tray icon and select **Gestures on**, to enable them.
+At every launch, the **camera is on and gestures are off** (orange tray badge). Show **both open palms**, hold **both fists for two seconds**, then **open both palms again**
+to enable them. You can also use the tray icon's **Gestures on**.
 
 ## Start
 
 - Double-click the **Hand Mouse** icon on your desktop. It runs in the background; its icon appears next to
   the clock (click the **^** arrow if Windows hides it, and drag it onto the taskbar to keep it visible).
 - **Left-click** the tray icon: stop / resume tracking (grey icon with a red badge = stopped, camera off).
-  A grey icon with an **orange** badge means gestures are off (two fists); the camera still watches for two
-  fists to turn them back on.
+  A grey icon with an **orange** badge means gestures are off (two fists); the camera still watches for the
+  open palms → fists held for two seconds → open palms sequence to enable them.
 - **Right-click** the tray icon:
   - **Camera & log window** shows what the app sees: green = main hand, orange = second hand, big text = what
     is happening now. The panel on the right shows each hand's live numbers and a log of every click,
@@ -60,7 +60,7 @@ scroll, swipe windows, press buttons 4/5 and change the volume instead of giving
 | Mouse button 5 (Forward) | Palm towards the camera, fingers up: fold the thumb across the palm onto the palm under the ring / little finger (anywhere from their base about halfway down to the wrist) |
 | Volume | Thumbs-up (fingers folded, thumb out), held a moment. Thumb straight up = 100%; turn the hand until the thumb points down to lower it to 0%. Tuck the thumb in to stop. A fist with the thumb tucked in still scrolls |
 | Scroll | Make a fist. Move it down to scroll down, up to scroll up, left / right to scroll sideways; the further from where you closed it, the faster. Only the direction you moved further scrolls, so a little drift doesn't scroll sideways. Open the hand to stop |
-| Gestures off / on | Hold **both** hands as fists for a second (beep first). While off, nothing reacts to your hands except two fists, which turn gestures back on. Holding the fists switches only once; open a hand (or take your hands out of view) before switching again. A full stop (camera off) is on the tray icon or Ctrl+Alt+H |
+| Gestures off / on | Hold **both** hands as fists for a second (beep first). While off, nothing reacts to your hands except the deliberate activation sequence: both palms open → both fists held for two seconds → both palms open again. Holding the fists switches only once; open a hand (or take your hands out of view) before switching again. A full stop (camera off) is on the tray icon or Ctrl+Alt+H |
 
 ## Left hand: keyboard shortcuts
 
@@ -269,3 +269,11 @@ it returns to 1 on capture exit/cancel or disabling the checkbox. The normal sli
 is unchanged, including adjustments during capture. Snipping Tool's ordinary editor does
 not count; detection checks the process and capture-class/full-monitor topmost geometry.
 The temporary factor is never saved as the normal sensitivity, and detection errors restore it.
+
+Deliberate reactivation (1.0.5): enabling by hands now requires BOTH palms open for 0.4 s,
+BOTH fists held continuously for 2 s, then BOTH palms open for 0.3 s. Hands remain visible
+and readable throughout. Resting fists, one hand, lost hands, thumb-out music poses and
+partial sequences cannot enable gestures. Five-second timeouts apply before/after the hold.
+The one-second two-fist pause stays available while enabled. Tray/manual enable remains.
+Startup also requires the deliberate sequence. Completion emits no other actions that frame.
+This supersedes older descriptions of two fists toggling gestures both ways.

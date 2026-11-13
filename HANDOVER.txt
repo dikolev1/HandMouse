@@ -235,3 +235,11 @@ it returns to 1 on capture exit/cancel or disabling the checkbox. The normal sli
 is unchanged, including adjustments during capture. Snipping Tool's ordinary editor does
 not count; detection checks the process and capture-class/full-monitor topmost geometry.
 The temporary factor is never saved as the normal sensitivity, and detection errors restore it.
+
+Deliberate reactivation (1.0.5): enabling by hands now requires BOTH palms open for 0.4 s,
+BOTH fists held continuously for 2 s, then BOTH palms open for 0.3 s. Hands remain visible
+and readable throughout. Resting fists, one hand, lost hands, thumb-out music poses and
+partial sequences cannot enable gestures. Five-second timeouts apply before/after the hold.
+The one-second two-fist pause stays available while enabled. Tray/manual enable remains.
+Startup also requires the deliberate sequence. Completion emits no other actions that frame.
+This supersedes older descriptions of two fists toggling gestures both ways.
