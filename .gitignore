@@ -18,3 +18,8 @@ __pycache__/
 
 # Debug mode pictures (tray menu)
 debug/
+
+# Private gesture profile bindings and local recovery files
+gesture_profiles.json
+gesture_profiles.json.invalid-*
+.profiles-*.tmp

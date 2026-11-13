@@ -71,7 +71,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.0.9"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.1.0"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60
@@ -1714,10 +1714,15 @@ class SecondHandKeys:
         if act is None:
             return
         keys, label = act
-        fn = getattr(self.mouse, "toggle_keyboard" if keys == "keyboard" else "keys", None)
+        fn = getattr(self.mouse, "perform_action" if isinstance(keys, dict) else
+                     ("toggle_keyboard" if keys == "keyboard" else "keys"), None)
         if fn is not None:
             try:
-                if keys == "keyboard":
+                if isinstance(keys, dict):
+                    if fn(keys) is False:
+                        self._show(label + ": failed")
+                        return
+                elif keys == "keyboard":
                     fn()
                 else:
                     fn(keys)
@@ -1802,7 +1807,7 @@ class LKeyPose:
             self.last_pose = now
             if not self.fired and now - self.since >= L_POSE_HOLD:
                 self.fired = True
-                if self.side == "left":
+                if self.side == "left" and getattr(self, "repeat", True):
                     self.next_repeat = now + BACKSPACE_REPEAT_DELAY
                 return True
             if (self.fired and self.side == "left" and h.hand_side == "left"
@@ -2005,6 +2010,8 @@ class Engine:
             return
         self.gestures_off = off
         self.wake.reset()
+        if off:
+            self.keys.pending = None  # explicit pause must not execute a queued profile action
         self.both_fists_since = None
         self.release_all(now, keep_fists=True)
         for key in self.fists:              # forget fist states, but keep the hands known (mid-frame)
@@ -2203,6 +2210,7 @@ class Engine:
         else:
             for h in hands:
                 pose = self.l_poses.setdefault(h.key, LKeyPose())
+                pose.repeat = getattr(self, "l_profile_repeat", True)
                 if pose.update(h, now):
                     l_fired.append((h, pose.side))
                 if pose.busy:
@@ -2315,8 +2323,14 @@ class Engine:
         for h, side in l_fired:
             label, vk = ("Backspace", _VK_NAMES["backspace"]) if side == "left" else ("Enter", _VK_NAMES["enter"])
             try:
-                self.mouse.keys([vk])
-                log.info("%s hand L pose -> %s", side, label)
+                action = getattr(self, "l_profile_actions", {}).get(side, {"kind": "default"})
+                if action["kind"] == "disabled":
+                    continue
+                if action["kind"] == "default":
+                    self.mouse.keys([vk])
+                else:
+                    self.mouse.perform_action(action)
+                log.info("%s hand L pose -> %s", side, label if action["kind"] == "default" else action)
             except Exception:
                 log.exception("%s hand L pose -> %s failed", side, label)
 
@@ -2392,9 +2406,14 @@ class Engine:
                 self.gesture = f"{side.upper()} HAND: {shown}"
 
         if l_busy:
-            self.gesture = " / ".join(f"{self.l_poses[h.key].side.upper()} HAND: "
-                                     f"{'BACKSPACE' if self.l_poses[h.key].side == 'left' else 'ENTER'}"
-                                     for h in hands if h.key in l_busy)
+            def l_text(h):
+                side = self.l_poses[h.key].side
+                label = "BACKSPACE" if side == "left" else "ENTER"
+                describe = getattr(self.mouse, "profile_label", None)
+                if describe is not None:
+                    label = describe("l:" + side, label)
+                return f"{side.upper()} HAND: {label}"
+            self.gesture = " / ".join(l_text(h) for h in hands if h.key in l_busy)
         if main is None:                        # main hand briefly gone: hold everything
             self._status(hands, main, rate, frozen=True)
             return
@@ -2407,7 +2426,9 @@ class Engine:
             self.clicks.update(dm, dr, now, suppress=main.key in l_busy or main_fist or side_busy or main.ext[0] < INDEX_STRAIGHT,
                                dragging=self.dragging)
         if self.clicks.pressed:
-            self.gesture = f"{self.clicks.pressed.upper()} CLICK"
+            label = f"{self.clicks.pressed.upper()} CLICK"
+            describe = getattr(self.mouse, "profile_label", None)
+            self.gesture = describe("mouse:" + self.clicks.pressed, label) if describe is not None else label
         elif side_busy and not self.gesture:
             self.gesture = "thumb on finger..."
         elif main_fist and not self.gesture:
@@ -2514,6 +2535,8 @@ class Engine:
         b = self.boxcam
         fit = (f"{b.sx:.2f} x {b.sy:.2f}" if b.target is not None
                else f"learning your reach {len(b.samples)}/{BOX_FIT_SAMPLES[0]}")
+        if hasattr(self, "profile_name"):
+            self.status.append(f"gesture profile: {self.profile_name}")
         self.status.append(f"cursor box: size {fit}{'   FOLLOWING your hand' if b.following else ''}")
         if self.ref_palm is None and SCALE_WITH_DISTANCE:
             self.status.append(f"learning your normal hand size... ({len(self.ref_samples)}/45)")
@@ -3010,6 +3033,8 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
 <p><b>L-pose keys:</b> index up, thumb out sideways, middle/ring/little fingers folded. Physical <b>left hand = Backspace</b>: deletes once, waits 0.5 seconds, then repeats while held; release to stop. Physical <b>right hand = Enter</b>: one press per pose, release to repeat. These keys follow the physical hand even if you change the main hand.</p>
 <p>Your <b>right hand</b> moves the cursor and clicks; the left one gives keyboard shortcuts (below). Make a <b>fist twice</b> quickly with either hand to swap the main hand, with one or both hands visible. Open between fists and after the second fist. The app remembers the selected hand after a restart.</p>
 <p>Hand Mouse requests administrator approval at launch so gesture clicks can control the Windows on-screen keyboard. Approve the Windows prompt with a physical mouse or keyboard; cancelling leaves the app closed.</p>
+<h3>Gesture profiles</h3>
+<p>Tray → <b>Gesture profiles...</b>: duplicate the read-only Basic profile, select a gesture and save its binding, then <b>Save &amp; apply</b>. Profiles support key shortcuts, media keys, mouse actions, disabling a gesture and opening an application or file. Main-hand pinches can hold a key or button until release. Pause, reactivation and hand swapping stay reserved. Applying turns gestures off until you enable them again. Custom pose recording is planned separately.</p>
 <h3>Tray icon (next to the clock)</h3>
 <ul><li><b>Left-click</b>: stop / resume tracking, camera off (red badge = stopped, orange badge = gestures off).</li>
 <li><b>Right-click</b>: Camera &amp; log window, Gestures on, Cursor sensitivity, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size, Close.</li>
@@ -3361,7 +3386,7 @@ class TrayIcon:
     Left-click: stop / resume tracking.  Right-click: menu."""
 
     def __init__(self, is_paused, on_toggle, on_close, view_shown=None, on_view=None, on_relearn=None,
-                 gestures_off=None, on_gestures=None, debug_on=None, on_debug=None, on_sensitivity=None):
+                 gestures_off=None, on_gestures=None, debug_on=None, on_debug=None, on_sensitivity=None, on_profiles=None):
         self.is_paused, self.on_toggle, self.on_close = is_paused, on_toggle, on_close
         self.debug_on = debug_on or (lambda: False)
         self.on_debug = on_debug or (lambda: None)
@@ -3371,6 +3396,7 @@ class TrayIcon:
         self.on_view = on_view or (lambda: None)
         self.on_relearn = on_relearn or (lambda: None)
         self.on_sensitivity = on_sensitivity or (lambda: None)
+        self.on_profiles = on_profiles or (lambda: None)
         self.camera_index = selected_camera(load_state())
         self.on_camera = lambda index: None
         self.icon = None
@@ -3410,6 +3436,7 @@ class TrayIcon:
                 item("Version " + APP_VERSION, lambda icon, it: None, enabled=False),
                 item("Gestures help", lambda icon, it: open_help()),
                 item("Cursor sensitivity...", lambda icon, it: self.on_sensitivity()),
+                item("Gesture profiles...", lambda icon, it: self.on_profiles()),
                 pystray.Menu.SEPARATOR,
                 item("Start with Windows", toggle_autostart, checked=lambda it: autostart_enabled()),
                 item("Re-learn my hand size", lambda icon, it: self.on_relearn()),
@@ -4420,13 +4447,23 @@ def run(preview: bool) -> bool:
     import cv2
     import numpy as np
 
-    mouse = WinMouse()
+    from gesture_profiles import ProfileStore, ProfileMouse, configure_engine, apply_profile_to_engine
+    from gesture_profiles_ui import ProfilesWindow
+    import queue
+    profiles = ProfileStore(os.path.join(HERE, "gesture_profiles.json"), parse_keys)
+    profile_requests = queue.SimpleQueue()
+    mouse = ProfileMouse(WinMouse(), parse_keys)
     state = load_state()
     engine = Engine(mouse, mouse.left, mouse.top, mouse.width, mouse.height,
                     ref_palm=state.get("ref_palm"), on_ref_learned=lambda v: save_state(ref_palm=v),
                     box_state=state.get("box"), main_side=state.get("main_side", "right"),
                     on_main_side=lambda side: main_side_changed(side), gestures_on=False,
                     cursor_sensitivity=state.get("cursor_sensitivity", 1.0))
+    profile_data = profiles.snapshot()
+    configure_engine(engine, mouse, profile_data["profiles"][profile_data["active"]], SECOND_KEYS, parse_keys, key_label)
+    engine.profile_name = profile_data["active"]
+    profiles_window = ProfilesWindow(profiles, profile_requests.put)
+    log.info("active gesture profile: %s", engine.profile_name)
     log.info("startup: camera on, gestures off; fists 1-3 s / open palms 1 s to enable")
     screenshot_precision = ScreenshotPrecision(engine.cursor, state.get("screenshot_precision", True) is True)
     def set_screenshot_precision(enabled):
@@ -4514,7 +4551,8 @@ def run(preview: bool) -> bool:
     tray = TrayIcon(pause_evt.is_set, toggle_pause, quit_evt.set,
                     view_shown=view_evt.is_set, on_view=toggle_view, on_relearn=relearn,
                     gestures_off=lambda: engine.gestures_off, on_gestures=toggle_gestures,
-                    debug_on=lambda: RECORDER.on, on_debug=toggle_debug, on_sensitivity=sensitivity_window.show)
+                    debug_on=lambda: RECORDER.on, on_debug=toggle_debug, on_sensitivity=sensitivity_window.show,
+                    on_profiles=profiles_window.show)
 
     def change_camera(index):
         if index == selected_camera(load_state()):
@@ -4586,6 +4624,14 @@ def run(preview: bool) -> bool:
                 restart = True
                 break
             mono = time.monotonic()
+            requested_profile = None
+            while not profile_requests.empty():
+                requested_profile = profile_requests.get_nowait()
+            if requested_profile is not None:
+                name = apply_profile_to_engine(engine, mouse, requested_profile, SECOND_KEYS, parse_keys, key_label, mono)
+                tray.refresh()
+                tray.notify(f"Profile {name} applied. Gestures are off; enable them when ready.")
+                log.info("gesture profile applied: %s", name)
             screenshot_precision.update(mono)
             if AUTO_RESTART_ON_EDIT and mono - last_file_check > 1.0:
                 last_file_check = mono
@@ -4619,6 +4665,7 @@ def run(preview: bool) -> bool:
 
             if pause_evt.is_set():
                 if cap is not None:
+                    engine.keys.pending = None
                     engine.release_all(time.monotonic())
                     cap.release()
                     cap = None
@@ -4754,8 +4801,11 @@ def run(preview: bool) -> bool:
                              f"{'' if sensor.view == 'normal' else '  colours: ' + sensor.view}", text_on_image=False)
                 view.show(compose(frame))
     finally:
+        engine.keys.pending = None
         engine.release_all(time.monotonic())
         sensitivity_window.stop()
+        profiles_window.stop()
+        mouse.release_profile_inputs()
         RECORDER.wait()
         if cap is not None:
             cap.release()

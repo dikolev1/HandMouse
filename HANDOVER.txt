@@ -271,3 +271,22 @@ normal fist tracking instead of restarting on every strict FIST_CURL misread. Th
 visibility check allows fully visible landmarks inside the image's old 2% edge margin.
 Unreadable, missing or actually clipped hands still cancel. Once-per-second wake diagnostics
 record phase, hand count, extensions, thumb spread and visibility to diagnose live failures.
+
+Saved profiles, first stage (1.1.0): gesture_profiles.py owns validated, atomic JSON persistence,
+Basic protection, ProfileMouse output routing/reference counts, and apply_profile_to_engine.
+gesture_profiles_ui.py is a real Tk editor on its own lazy thread, with owning-thread GC like the
+sensitivity UI. Deploy both helper files before replacing hand_mouse.py. Include them in downloads.
+The local gesture_profiles.json/recovery files are gitignored. Existing recognition/timing remains;
+main-hand button gestures, SECOND_KEYS and physical L-pose outputs can be rebound. Key shortcuts,
+media keys, mouse buttons, OSK toggle, open file/application and Disabled are supported. Holding is
+available for main-hand key/mouse pinches; optional repeat for left-L key/mouse actions. Custom open
+or keyboard-toggle actions do not repeat on left L by default. Basic retains Backspace repeat and
+native Alt+Tab hold/navigation. Read-only Basic defaults apply wherever no override exists.
+UI Save binding edits a draft; Save & apply persists and queues a snapshot to the gesture thread.
+Application discards old pending taps, releases old outputs, replaces bindings, and turns gestures
+off. Active-profile deletion falls back to Basic. Pause/reactivation/hand swapping remain reserved;
+scroll/volume/cursor movement keep existing behavior. No recording of novel poses or arbitrary new
+sequences in this first stage; that remains the next stage of the previously discussed design.
+Tests cover default compatibility, file failure/recovery, validation, input release, queued apply,
+and real Tk edit/apply/duplicate/rename/delete workflow. UI tests must use plain patched dialog
+functions: MagicMock call history retains parent Tk objects and can destroy them on the wrong thread.

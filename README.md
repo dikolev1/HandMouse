@@ -40,6 +40,30 @@ to enable them. You can also use the tray icon's **Gestures on**.
   - **Close Hand Mouse**.
 - Double-clicking the desktop icon while the app is running opens the camera & log window.
 
+## Saved gesture profiles
+
+Right-click the tray icon → **Gesture profiles...**. **Basic** preserves the existing gestures and
+cannot be edited or deleted. Choose **Duplicate** or **New**, give the profile a name, then:
+
+1. Select a gesture in the list.
+2. Choose its action: a key/shortcut/media key, mouse button, on-screen keyboard, application/file,
+   disabled, or its Basic action. Examples: `space`, `f5`, `ctrl+shift+c`, `win+shift+s`, `nexttrack`.
+3. For a main-hand pinch, optionally choose **Hold keys / button until pinch is released**.
+   Left L-pose bindings can optionally **Repeat while the left L pose is held**. Other custom actions
+   fire once; Basic retains the original click/drag, Alt+Tab and Backspace behavior.
+4. Click **Save binding**, then **Save & apply**. Applying releases held input and turns gestures off.
+   Enable gestures when ready. The chosen profile and its bindings survive app/PC restarts.
+
+Profiles support the existing main-hand button gestures, other-hand shortcuts/media gestures and both
+physical L poses. Recognition and gesture timing stay the same. Cursor movement, fist scrolling,
+volume control, main-hand swapping, pause and reactivation remain unchanged/reserved.
+New-pose recording and user-defined gesture sequences are the next stage and are not part of this version.
+
+Use the profile list and **Save & apply** to switch profiles. **Rename** and **Delete** manage saved
+profiles. Deleting an active profile restores Basic with gestures off. Profile data is stored locally
+in `gesture_profiles.json` beside the app, separately from sensitivity/camera settings and excluded from
+Git. A malformed profile file falls back to Basic and is backed up before the next explicit save.
+
 ## Gestures
 
 Your **main hand** is your **right hand**: it moves the cursor and makes the mouse gestures. The left hand gives
