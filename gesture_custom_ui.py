@@ -2,17 +2,38 @@
 from copy import deepcopy
 
 
-def record_dialog(parent,runtime,existing,parse_keys,on_save):
+def poll_window(win,callback):
+    from tkinter import TclError
+    state={"job":None}
+    def tick():
+        try:
+            if not win.winfo_exists(): return
+            callback()
+            if win.winfo_exists(): state["job"]=win.after(100,tick)
+        except TclError: pass
+    def cleanup(event):
+        if event.widget is win and state["job"] is not None:
+            try: win.after_cancel(state["job"])
+            except TclError: pass
+            state["job"]=None
+    win.bind("<Destroy>",cleanup,add="+")
+    state["job"]=win.after(100,tick)
+
+
+def record_dialog(parent,runtime,existing,parse_keys,on_save,embedded=False,on_close=None):
     import tkinter as tk
     from tkinter import ttk,messagebox,filedialog
     from gesture_custom import new_definition,validate_custom
     from gesture_profiles_ui import TYPE_LABELS
-    win=tk.Toplevel(parent)
-    from app_theme import attach_theme
-    attach_theme(win)
-    win.title("Hand Mouse - Record custom gesture")
-    win.geometry("740x650")
-    win.minsize(700,610)
+    if embedded:
+        win=ttk.Frame(parent);win.pack(fill="both",expand=True)
+    else:
+        win=tk.Toplevel(parent)
+        from app_theme import attach_theme
+        attach_theme(win)
+        win.title("Hand Mouse - Record custom gesture")
+        win.geometry("740x650")
+        win.minsize(700,610)
     frame=ttk.Frame(win,padding=16)
     frame.pack(fill="both",expand=True)
     frame.columnconfigure(1,weight=1)
@@ -97,6 +118,7 @@ def record_dialog(parent,runtime,existing,parse_keys,on_save):
     def close():
         runtime.stop_training()
         win.destroy()
+        if on_close is not None: on_close()
     def save():
         try:
             d=definition()
@@ -111,7 +133,7 @@ def record_dialog(parent,runtime,existing,parse_keys,on_save):
     ttk.Button(footer,text="Test recognition (no input)",command=test).pack(side="left")
     ttk.Button(footer,text="Save recorded gesture",command=save).pack(side="left",padx=8)
     ttk.Button(footer,text="Cancel",command=close).pack(side="right")
-    win.protocol("WM_DELETE_WINDOW",close)
+    if not embedded: win.protocol("WM_DELETE_WINDOW",close)
     def poll():
         nonlocal seen_result
         if not win.winfo_exists(): return
@@ -123,31 +145,35 @@ def record_dialog(parent,runtime,existing,parse_keys,on_save):
             if "step" in result:
                 steps.append(result["step"]);warnings.append(result.get("warning",""));redraw()
             elif "error" in result: status.set(result["error"])
-        win.after(100,poll)
-    win.after(100,poll)
-    win.transient(parent)
-    win.grab_set()
-    win.focus_force()
+    poll_window(win,poll)
+    if not embedded:
+        win.transient(parent)
+        win.grab_set()
+        win.focus_force()
 
 
-def test_dialog(parent,runtime,definition):
+def test_dialog(parent,runtime,definition,embedded=False,on_close=None):
     import tkinter as tk
     from tkinter import ttk
-    win=tk.Toplevel(parent)
-    from app_theme import attach_theme
-    attach_theme(win)
-    win.title("Hand Mouse - Test "+definition["name"])
-    win.geometry("620x210")
+    if embedded:
+        win=ttk.Frame(parent);win.pack(fill="both",expand=True)
+    else:
+        win=tk.Toplevel(parent)
+        from app_theme import attach_theme
+        attach_theme(win)
+        win.title("Hand Mouse - Test "+definition["name"])
+        win.geometry("620x210")
     status=tk.StringVar(value="Perform the gesture. No keys or mouse actions are sent.")
     ttk.Label(win,textvariable=status,wraplength=570,padding=20).pack(fill="both",expand=True)
     runtime.start_test(definition)
-    def close(): runtime.stop_training();win.destroy()
+    def close():
+        runtime.stop_training();win.destroy()
+        if on_close is not None: on_close()
     ttk.Button(win,text="Close test",command=close).pack(pady=12)
-    win.protocol("WM_DELETE_WINDOW",close)
+    if not embedded: win.protocol("WM_DELETE_WINDOW",close)
     def poll():
         if not win.winfo_exists(): return
         message,_,count=runtime.poll()
         status.set(message or "Perform the gesture. No input sent.")
-        win.after(100,poll)
-    win.after(100,poll)
-    win.transient(parent);win.grab_set()
+    poll_window(win,poll)
+    if not embedded: win.transient(parent);win.grab_set()

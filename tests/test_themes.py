@@ -103,30 +103,26 @@ class ThemeTests(unittest.TestCase):
         finally:
             window.stop();THEME.configure(before)
 
-    def test_real_tray_menu_theme_callbacks_are_valid_and_persist(self):
+    def test_tray_has_one_settings_entry_and_separate_camera(self):
         import hand_mouse as hm
         import pystray
-        before=THEME.mode
-        saved=[]
+        calls=[]
         class Icon:
             def __init__(self,name,image,title,menu): self.menu=menu
             def run(self): pass
             def update_menu(self): pass
-        try:
-            THEME.configure("light",saved.append)
-            with patch.object(pystray,"Icon",Icon),patch.object(hm.TrayIcon,"_make_images",return_value={"on":None,"sleep":None,"paused":None}):
-                tray=hm.TrayIcon(lambda:False,lambda:None,lambda:None)
-                self.assertIsNotNone(tray.icon)
-                item=next(it for it in tray.icon.menu.items if it.text=="Theme")
-                dark=next(it for it in item.submenu.items if it.text=="Dark")
-                light=next(it for it in item.submenu.items if it.text=="Light")
-                self.assertTrue(light.checked)
-                dark(tray.icon)
-                self.assertEqual(THEME.mode,"dark")
-                self.assertTrue(dark.checked)
-                self.assertFalse(light.checked)
-                self.assertEqual(saved,["dark"])
-        finally: THEME.configure(before)
+        with patch.object(pystray,"Icon",Icon),patch.object(hm.TrayIcon,"_make_images",return_value={"on":None,"sleep":None,"paused":None}):
+            tray=hm.TrayIcon(lambda:False,lambda:None,lambda:None,
+                            on_settings=lambda:calls.append("settings"),on_view=lambda:calls.append("camera"))
+            self.assertIsNotNone(tray.icon)
+            labels=[it.text for it in tray.icon.menu.items]
+            self.assertIn("Settings...",labels)
+            self.assertIn("Camera && log window",labels)
+            for old in ("Theme","Camera","Gesture profiles...","Cursor sensitivity...","Gestures help","Check for updates"):
+                self.assertNotIn(old,labels)
+            next(it for it in tray.icon.menu.items if it.text=="Settings...")(tray.icon)
+            next(it for it in tray.icon.menu.items if it.text=="Camera && log window")(tray.icon)
+            self.assertEqual(calls,["settings","camera"])
 
     def test_real_tk_windows_and_readonly_fields_switch_live(self):
         import tkinter as tk

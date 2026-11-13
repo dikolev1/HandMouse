@@ -9,15 +9,18 @@ TYPE_LABELS={"Basic action":"default","Disabled":"disabled","Key / shortcut / me
              "Mouse button":"mouse","On-screen keyboard":"keyboard","Open application / file":"open"}
 
 class ProfilesWindow:
-    def __init__(self,store,on_apply,custom=None):
+    def __init__(self,store,on_apply,custom=None,settings=None):
         self.store,self.on_apply=store,on_apply
         self.custom=custom
+        self.settings=settings
+        self.requested_tab=None
         self.show_evt,self.stop_evt=threading.Event(),threading.Event()
         self.lock=threading.Lock()
         self.thread=None
 
-    def show(self):
+    def show(self,tab=None):
         with self.lock:
+            self.requested_tab=tab
             self.show_evt.set()
             if self.thread is None or not self.thread.is_alive():
                 self.stop_evt.clear()
@@ -42,12 +45,28 @@ class ProfilesWindow:
         root.withdraw()
         from app_theme import attach_theme
         attach_theme(root)
-        root.title("Hand Mouse - Gesture profiles")
+        root.title("Hand Mouse - Settings" if self.settings else "Hand Mouse - Gesture profiles")
         root.minsize(780,640)
         root.geometry("900x720")
         root.columnconfigure(0,weight=1)
         root.rowconfigure(0,weight=1)
-        frame=ttk.Frame(root,padding=16)
+        notebook=None
+        pages={}
+        settings_flush=lambda:None
+        settings_poll=lambda:None
+        profiles_parent=root
+        record_page=None
+        if self.settings:
+            from app_settings import build_pages
+            notebook=ttk.Notebook(root)
+            notebook.grid(row=0,column=0,sticky="nsew",padx=8,pady=8)
+            pages,settings_flush,settings_poll=build_pages(root,notebook,self.settings)
+            profiles_parent=ttk.Frame(notebook)
+            profiles_parent.rowconfigure(0,weight=1);profiles_parent.columnconfigure(0,weight=1)
+            notebook.insert(2,profiles_parent,text="Gesture profiles")
+            pages["Gesture profiles"]=profiles_parent
+            record_page=ttk.Frame(notebook)
+        frame=ttk.Frame(profiles_parent,padding=16)
         frame.grid(sticky="nsew")
         frame.columnconfigure(0,weight=1)
         frame.rowconfigure(3,weight=1)
@@ -64,7 +83,7 @@ class ProfilesWindow:
         tree_frame.grid(row=3,column=0,sticky="nsew")
         tree_frame.columnconfigure(0,weight=1)
         tree_frame.rowconfigure(0,weight=1)
-        tree=ttk.Treeview(tree_frame,columns=("gesture","action"),show="headings",selectmode="browse",height=7)
+        tree=ttk.Treeview(tree_frame,columns=("gesture","action"),show="headings",selectmode="browse",height=6)
         tree.heading("gesture",text="Gesture")
         tree.heading("action",text="Assigned action")
         tree.column("gesture",width=390,minwidth=240)
@@ -232,6 +251,19 @@ class ProfilesWindow:
                 active.set("Active: "+choice.get())
                 note.set("Saved and applied. Gestures are off; enable them when ready.")
             except Exception as exc: error(exc)
+        def close_embedded():
+            if notebook is None: return
+            if self.custom is not None: self.custom.stop_training()
+            for child in record_page.winfo_children(): child.destroy()
+            if str(record_page) in notebook.tabs(): notebook.forget(record_page)
+            for page in pages.values(): notebook.tab(page,state="normal")
+            notebook.select(profiles_parent)
+        def open_embedded(title):
+            close_embedded()
+            notebook.add(record_page,text=title)
+            for page in pages.values(): notebook.tab(page,state="disabled")
+            notebook.select(record_page)
+            return record_page
         def record_custom():
             if choice.get()==BASIC: error(ValueError("Duplicate Basic before adding recorded gestures.")); return
             if self.custom is None: error(ValueError("Camera recording is unavailable.")); return
@@ -242,14 +274,19 @@ class ProfilesWindow:
                 dirty=True
                 redraw()
                 note.set("Recorded gesture added to this draft. Click Save & apply to activate the profile.")
-            record_dialog(root,self.custom,draft.get("__custom__",[]),self.store.parse_keys,saved)
+            if notebook is None:
+                record_dialog(root,self.custom,draft.get("__custom__",[]),self.store.parse_keys,saved)
+            else:
+                record_dialog(open_embedded("Record gesture"),self.custom,draft.get("__custom__",[]),
+                              self.store.parse_keys,saved,embedded=True,on_close=close_embedded)
         def test_custom():
             rows=tree.selection()
             d=next((d for d in draft.get("__custom__",[]) if rows and "custom:"+d["id"]==rows[0]),None)
             if d is None: error(ValueError("Select a recorded gesture first.")); return
             if self.custom is None: error(ValueError("Camera testing is unavailable.")); return
             from gesture_custom_ui import test_dialog
-            test_dialog(root,self.custom,d)
+            if notebook is None: test_dialog(root,self.custom,d)
+            else: test_dialog(open_embedded("Test gesture"),self.custom,d,embedded=True,on_close=close_embedded)
         def delete_custom():
             nonlocal dirty
             rows=tree.selection()
@@ -261,8 +298,10 @@ class ProfilesWindow:
             redraw()
         def hide():
             nonlocal dirty
+            settings_flush()
             if dirty and not messagebox.askyesno("Unsaved bindings","Discard unsaved bindings and close?",parent=root): return
             dirty=False
+            close_embedded()
             load()
             if self.custom is not None: self.custom.stop_training()
             for child in root.winfo_children():
@@ -276,7 +315,12 @@ class ProfilesWindow:
         ttk.Button(header,text="Rename",command=rename).pack(side="left",padx=3)
         ttk.Button(header,text="Delete",command=delete).pack(side="left",padx=3)
         ttk.Button(footer,text="Save & apply",command=apply).pack(side="left")
-        ttk.Button(footer,text="Close",command=hide).pack(side="right")
+        if notebook is None:
+            ttk.Button(footer,text="Close",command=hide).pack(side="right")
+        else:
+            shared_footer=ttk.Frame(root,padding=(12,0,12,10))
+            shared_footer.grid(row=1,column=0,sticky="ew")
+            ttk.Button(shared_footer,text="Close settings",command=hide).pack(side="right")
         def action_type_changed(event=None):
             if TYPE_LABELS[kind.get()] not in ("keys","mouse"):
                 held.set(False);repeated.set(False)
@@ -288,10 +332,15 @@ class ProfilesWindow:
         if self.store.load_error: note.set("Could not load saved profiles: "+self.store.load_error+". Basic is active.")
         def poll():
             if self.stop_evt.is_set():
+                settings_flush()
                 if self.custom is not None: self.custom.stop_training()
                 root.destroy(); return
+            settings_poll()
             if self.show_evt.is_set():
                 self.show_evt.clear()
+                if notebook is not None and self.requested_tab:
+                    tab={"Help":"Help & updates","Profiles":"Gesture profiles","Cursor":"Cursor & appearance"}.get(self.requested_tab,self.requested_tab)
+                    if tab in pages and notebook.tab(pages[tab],"state")!="disabled": notebook.select(pages[tab])
                 active.set("Active: "+self.store.snapshot()["active"])
                 root.deiconify()
                 root.lift()
@@ -300,5 +349,7 @@ class ProfilesWindow:
         root.after(0,poll)
         try: root.mainloop()
         finally:
+            try: settings_flush()
+            except tk.TclError: pass
             try: root.destroy()
             except tk.TclError: pass

@@ -9,47 +9,34 @@ Cancelling leaves the app closed.
 At every launch, the **camera is on and gestures are off** (orange tray badge). Hold **both fists for 1-3 seconds**, then keep **both palms open for 1 second**
 to enable them. You can also use the tray icon's **Gestures on**.
 
-## Start
+## Start and Settings
 
-- Double-click the **Hand Mouse** icon on your desktop. It runs in the background; its icon appears next to
-  the clock (click the **^** arrow if Windows hides it, and drag it onto the taskbar to keep it visible).
-- **Left-click** the tray icon: stop / resume tracking (grey icon with a red badge = stopped, camera off).
-  A grey icon with an **orange** badge means gestures are off (two fists); the camera still watches for the
-  fists held for 1-3 seconds → palms open for 1 second sequence to enable them.
-- **Right-click** the tray icon:
-  - **Camera & log window** shows what the app sees: green = main hand, orange = second hand, big text = what
-    is happening now. The panel on the right shows each hand's live numbers and a log of every click,
-    button 4/5, scroll and swipe the app recognised (newest at the bottom). In that window **P** stops /
-    resumes, **S** saves the plain camera picture to the `snapshots` folder (handy to show what a missed
-    gesture looks like), **Esc** closes it (the app keeps running). The window can be resized and moved to
-    another screen (also with a gesture drag); its size and place are remembered.
-  - **Gestures on**: tick / untick to turn gestures on or off (same as holding two fists).
-  - **Stop / Resume tracking**: camera off / on. Resuming also turns gestures back on.
-  - **Gestures help** opens a one-page summary of all gestures.
-  - **Cursor sensitivity...** opens a live slider from **25% to 250%** (100% = normal). Lower values need
-    more index-finger movement; higher values move the cursor faster. Changes are saved automatically and
-    remembered after restarting the app or PC. **Reset to 100%** restores normal sensitivity.
-  - **Start with Windows** starts the app automatically when you log in.
-  - **Re-learn my hand size**: hold your open hand up for a few seconds at your usual distance.
-  - **Debug: save a picture of every gesture** (off by default, remembered): every gesture the app recognises
-    (clicks, buttons, scroll, volume, left-hand shortcuts, two fists, and pinches it cancelled or found too short)
-    saves a picture to the `debug` folder next to `hand_mouse.py`: 8 camera frames from the last 1.2 seconds with
-    the hands drawn in, the log line as the title and each hand's numbers. The file name starts with the date and
-    time, so it matches the line in `hand_mouse.log`. When a gesture misfires, the picture shows what the app saw.
-    At most 500 pictures are kept: each new one deletes the oldest (`DEBUG_KEEP`). Turn it off when done.
-  - **Close Hand Mouse**.
-- Double-clicking the desktop icon while the app is running opens the camera & log window.
+- Double-click **Hand Mouse** on your desktop. The app runs in the tray near the clock; use **^** if hidden.
+- **Left-click** the tray icon to stop/resume tracking and the camera.
+- **Right-click → Camera & log window** opens the separate preview. It shows green main-hand/orange
+  other-hand landmarks, current actions and logs. **P** pauses/resumes, **S** saves a snapshot,
+  **Esc** closes the preview while the app keeps running. Double-clicking the desktop shortcut while
+  the app is running also opens this preview.
+- **Right-click → Settings...** opens one settings window with:
+  - **General:** camera selection, Start with Windows, debug pictures and Re-learn my hand size.
+    Changing camera restarts the app, so save profile drafts first. Debug pictures stay in `debug/`;
+    turn debug off after troubleshooting. Calibration asks you to hold an open hand at your usual distance.
+  - **Cursor & appearance:** saved sensitivity (25%-250%, reset to 100%), screenshot precision and Light/Dark/Device.
+  - **Gesture profiles:** saved bindings, profiles and custom gesture recording/testing. Recorder and
+    test pages open inside Settings. Close/cancel them to return to the other pages.
+  - **Help & updates:** the gesture guide, current version, update checks and download link.
+- The tray keeps **Gestures on**, **Stop/Resume tracking** and **Close Hand Mouse** as quick controls.
+- Settings changes apply live where possible and remain saved; switching profiles turns gestures off.
 
 ## Appearance
 
-Choose **Tray → Theme → Light / Dark / Device**, or use the Theme dropdown in
-**Cursor sensitivity...**. The choice applies live and is remembered after restart.
+Choose **Settings → Cursor & appearance → Theme → Light / Dark / Device**. The choice applies live and is remembered after restart.
 **Device** follows your Windows app-color setting. Settings, profile/recording windows and
 the camera log panel share the theme; the camera image itself keeps its original colors.
 
 ## Saved gesture profiles
 
-Right-click the tray icon → **Gesture profiles...**. **Basic** preserves the existing gestures and
+Open **Tray → Settings... → Gesture profiles**. **Basic** preserves the existing gestures and
 cannot be edited or deleted. Choose **Duplicate** or **New**, give the profile a name, then:
 
 1. Select a gesture in the list.
@@ -73,7 +60,7 @@ Git. A malformed profile file falls back to Basic and is backed up before the ne
 
 ## Record new poses and combinations
 
-1. Open **Tray → Gesture profiles...** and select your own profile (duplicate Basic first).
+1. Open **Settings → Gesture profiles** and select your own profile (duplicate Basic first).
 2. Click **Record custom...**. Give the gesture a name and choose the physical left/right hand,
    main/other hand, or either hand. For Either, keep just one hand visible while recording.
 3. Choose **Single pose**, **Pose sequence**, **Pose + swipe left**, or **Pose + swipe right**.
@@ -370,7 +357,7 @@ visibility check allows fully visible landmarks inside the image's old 2% edge m
 Unreadable, missing or actually clipped hands still cancel. Once-per-second wake diagnostics
 record phase, hand count, extensions, thumb spread and visibility to diagnose live failures.
 
-Appearance themes (1.2.1): Tray -> Theme -> Light / Dark / Device, also a Theme dropdown
+Appearance themes (1.2.1): Settings -> Cursor & appearance -> Theme -> Light / Dark / Device, also a Theme dropdown
 in Cursor sensitivity settings. Device is the default and follows Windows app colors, refreshed
 at most once/second. Saved as theme in the existing atomic state file; changing themes does
 not affect sensitivity, profiles or gesture activation. app_theme.py owns the thread-safe

@@ -19,6 +19,7 @@ care that it works reliably; when unsure, measure before claiming something help
 | File | What it is |
 |---|---|
 | `hand_mouse.py` | The whole app. Settings are the UPPER_CASE constants at the top (lines ~57-260), each with a comment. |
+| `app_settings.py` | General, cursor/appearance and help/update pages inside the shared Settings notebook. |
 | `app_theme.py` | Shared appearance preferences, Windows Device-mode detection and per-thread widget styling. |
 | `gesture_profiles.py`, `gesture_profiles_ui.py` | Saved profiles, binding output routing and the Tk profile editor. |
 | `gesture_custom.py`, `gesture_custom_ui.py` | Recorded pose/sequence recognition, guided recording and no-input testing. |
@@ -523,3 +524,20 @@ Generated help follows the chosen theme when opened (Device uses browser OS pref
 Windows menus/native file dialogs are rendered by Windows. Native title bars use the documented
 DWM immersive-dark attribute where supported; failure leaves normal system chrome intact.
 Tests cover Device refresh, persistence, real root/child widgets, the settings selector and panel pixels.
+
+Unified Settings (1.3.0): production now has ONE Tk Settings root (hosted by ProfilesWindow),
+with General, Cursor & appearance, Gesture profiles, Help & updates. app_settings.py builds
+General/cursor/help pages. Camera/log remains a direct separate tray entry. Tray otherwise
+keeps Settings, gestures toggle, tracking pause/resume and quit; former camera/theme/startup/
+debug/help/update/profile/sensitivity entries live in Settings. Production no longer constructs
+SensitivityWindow (legacy helper remains for compatibility/tests). Save debounce flushes on
+Settings hide/stop. Theme/profile/camera persistence and action callbacks are unchanged.
+First-run help opens the Settings Help page instead of a browser. Recorder and recognition
+test forms use embedded notebook pages in production; other tabs are disabled while recording/
+testing to prevent editing another profile's draft accidentally. Cancel/save/test-close restores
+ordinary tabs. Closing Settings cancels training and cleans the embedded page. Native name/file
+pickers and confirmation dialogs remain contextual dialogs, not separate settings windows.
+gesture_custom_ui.poll_window cancels its scheduled polling on destruction to avoid stale Tcl
+commands after embedded pages close. GUI tests cover one-root layout, live controls, saving,
+record/test/rebind/apply, no input in training, cleanup and button bounds. Deploy app_settings.py
+and updated helpers BEFORE the live script. Existing settings/profile files are preserved.

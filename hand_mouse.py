@@ -38,8 +38,7 @@ L-shaped pose (index up, thumb out sideways, other three folded), held briefly:
 At every start the camera is ON and gestures are OFF. Hold both fists 1-3 seconds, then open both palms for 1 second; or use the tray's Gestures on.
 
 Tray icon (next to the clock): left-click stops / resumes tracking; right-click for the menu
-(Camera & log window, Gestures on, Cursor sensitivity slider, Stop / Resume tracking, Gestures help, Start with Windows, Re-learn my hand size,
-Close). The camera & log window shows what the app sees and a list of the gestures it recognised.
+(Camera & log window, Settings, Gestures on, Stop / Resume tracking, Close). The camera & log window shows what the app sees and a list of the gestures it recognised.
 Double-clicking the desktop icon while the app runs opens that window.
 
 Hotkeys:
@@ -72,7 +71,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.2.1"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.3.0"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60
@@ -3070,19 +3069,12 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
 <p>Your <b>right hand</b> moves the cursor and clicks; the left one gives keyboard shortcuts (below). Make a <b>fist twice</b> quickly with either hand to swap the main hand, with one or both hands visible. Open between fists and after the second fist. The app remembers the selected hand after a restart.</p>
 <p>Hand Mouse requests administrator approval at launch so gesture clicks can control the Windows on-screen keyboard. Approve the Windows prompt with a physical mouse or keyboard; cancelling leaves the app closed.</p>
 <h3>Gesture profiles</h3>
-<p>Tray → <b>Gesture profiles...</b>: duplicate the read-only Basic profile, select a gesture and save its binding, then <b>Save &amp; apply</b>. Profiles support key shortcuts, media keys, mouse actions, disabling a gesture and opening an application or file. Main-hand pinches can hold a key or button until release. Pause, reactivation and hand swapping stay reserved. Applying turns gestures off until you enable them again. Choose <b>Record custom...</b> for a pose, ordered pose sequence, or a pose followed by a left/right swipe. Guided recording keeps gestures off. Test mode recognizes the gesture without sending input. Save the recorded gesture, then Save &amp; apply the profile.</p>
+<p>Settings → <b>Gesture profiles</b>: duplicate the read-only Basic profile, select a gesture and save its binding, then <b>Save &amp; apply</b>. Profiles support key shortcuts, media keys, mouse actions, disabling a gesture and opening an application or file. Main-hand pinches can hold a key or button until release. Pause, reactivation and hand swapping stay reserved. Applying turns gestures off until you enable them again. Choose <b>Record custom...</b> for a pose, ordered pose sequence, or a pose followed by a left/right swipe. Guided recording keeps gestures off. Test mode recognizes the gesture without sending input. Save the recorded gesture, then Save &amp; apply the profile.</p>
+<h3>Settings</h3><p>Right-click the tray icon and open <b>Settings...</b>. General contains camera selection, Windows startup, debug pictures and hand calibration. Cursor &amp; appearance contains sensitivity, screenshot precision and Light/Dark/Device themes. Gesture profiles contains bindings and embedded recording/testing pages. Help &amp; updates contains this guide, version and update checks. Camera &amp; log window stays a separate tray option.</p>
 <h3>Tray icon (next to the clock)</h3>
-<ul><li><b>Left-click</b>: stop / resume tracking, camera off (red badge = stopped, orange badge = gestures off).</li>
-<li><b>Right-click</b>: Camera &amp; log window, Gestures on, Cursor sensitivity, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size, Close.</li>
-<li><b>Cursor sensitivity</b>: opens a live 25%-250% slider. 100% is normal; the value is remembered after restarting the app or PC.</li></ul>
-<h3>Tips</h3>
-<ul><li>Good light on your hands helps more than anything else.</li>
-<li>You can sit further back: small hands are read from a zoomed view, and movements scale with distance.</li>
-<li>If gestures feel too big or too small after you change where you sit, use <b>Re-learn my hand size</b> and hold your open hand up for a few seconds.</li>
-<li>The cursor box (grey rectangle in the camera window) follows your hand when your finger stays outside it, and slowly fits its size to how far you usually move. The cursor doesn't jump when it does. The outer blue border keeps the whole box roughly a hand-width away from the camera edges.</li>
-<li><b>Camera</b>: select Camera 1 through 10; the choice is saved. Selecting a different camera restarts tracking with gestures off. Use Camera &amp; log window to identify the feed.</li>
-<li><b>Camera &amp; log window</b> shows what the app sees (green = main hand, orange = second hand), what it is doing right now, and a log of every click, button, scroll and swipe it recognised. <kbd>P</kbd> stops/resumes, <kbd>Esc</kbd> closes the window (the app keeps running).</li>
-<li><b>Debug: save a picture of every gesture</b> (tray menu, off by default): each recognised gesture saves a strip of camera frames to the <code>debug</code> folder, to find out why a gesture misfired.</li>
+<ul><li><b>Left-click</b>: stop / resume tracking and the camera.</li>
+<li><b>Right-click</b>: Camera &amp; log window, Settings, Gestures on, Stop/Resume and Close.</li>
+<li><b>Camera &amp; log window</b> stays separate. <kbd>P</kbd> stops/resumes, <kbd>S</kbd> saves a snapshot, <kbd>Esc</kbd> closes the preview while the app keeps running.</li>
 <li>Keys: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>H</kbd> stop/resume, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> re-learn hand size, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Q</kbd> quit.</li></ul>
 </main></body></html>
 """
@@ -3393,7 +3385,7 @@ class UpdateChecker:
             if newer:
                 if manual or latest != self.notified:
                     self.notify(f"Hand Mouse {latest} is available (installed: {APP_VERSION}). "
-                                "Update needed: right-click the tray icon and choose Download latest version.")
+                                "Update needed: open Settings > Help & updates and choose Download latest version.")
                     self.notified = latest
                     save_state(update_notified=latest)
                 log.info("update available: %s (installed %s)", latest, APP_VERSION)
@@ -3431,7 +3423,7 @@ class TrayIcon:
     Left-click: stop / resume tracking.  Right-click: menu."""
 
     def __init__(self, is_paused, on_toggle, on_close, view_shown=None, on_view=None, on_relearn=None,
-                 gestures_off=None, on_gestures=None, debug_on=None, on_debug=None, on_sensitivity=None, on_profiles=None):
+                 gestures_off=None, on_gestures=None, debug_on=None, on_debug=None, on_sensitivity=None, on_profiles=None, on_settings=None):
         self.is_paused, self.on_toggle, self.on_close = is_paused, on_toggle, on_close
         self.debug_on = debug_on or (lambda: False)
         self.on_debug = on_debug or (lambda: None)
@@ -3442,6 +3434,7 @@ class TrayIcon:
         self.on_relearn = on_relearn or (lambda: None)
         self.on_sensitivity = on_sensitivity or (lambda: None)
         self.on_profiles = on_profiles or (lambda: None)
+        self.on_settings = on_settings or self.on_profiles
         self.camera_index = selected_camera(load_state())
         self.on_camera = lambda index: None
         self.icon = None
@@ -3454,45 +3447,15 @@ class TrayIcon:
             item = pystray.MenuItem
             self.images = self._make_images()
 
-            def toggle_autostart(icon, it):
-                try:
-                    set_autostart(not autostart_enabled())
-                except Exception:
-                    log.exception("could not change start with Windows")
-                self.refresh()
-
-            def camera_item(index):
-                return item(f"Camera {index + 1} (index {index})",
-                            lambda icon, it: self.on_camera(index),
-                            checked=lambda it: self.camera_index == index, radio=True)
-
-            def theme_item(label):
-                mode = label.lower()
-                return item(label, lambda icon, it: self._set_theme(mode),
-                            checked=lambda it: THEME.mode == mode, radio=True)
-
             menu = pystray.Menu(
                 item(lambda it: "Hand Mouse: " + self._state_text(), lambda icon, it: None, enabled=False),
                 pystray.Menu.SEPARATOR,
-                item("Camera", pystray.Menu(*(camera_item(index) for index in range(10)))),
                 item("Camera && log window", lambda icon, it: self.on_view(), checked=lambda it: self.view_shown()),
+                item("Settings...", lambda icon, it: self.on_settings()),
                 item("Gestures on (fists 1-3 s / open palms 1 s to enable)", lambda icon, it: self.on_gestures(),
                      checked=lambda it: not self.gestures_off(), enabled=lambda it: not self.is_paused()),
                 item(lambda it: "Resume tracking" if self.is_paused() else "Stop tracking",
                      lambda icon, it: self.on_toggle(), default=True),
-                item("Check for updates", lambda icon, it: self.updates.manual()
-                     if getattr(self, "updates", None) else None),
-                item("Download latest version", lambda icon, it: open_update_page()),
-                item("Version " + APP_VERSION, lambda icon, it: None, enabled=False),
-                item("Gestures help", lambda icon, it: open_help()),
-                item("Cursor sensitivity...", lambda icon, it: self.on_sensitivity()),
-                item("Gesture profiles...", lambda icon, it: self.on_profiles()),
-                item("Theme", pystray.Menu(*(theme_item(label) for label in ("Light", "Dark", "Device")))) ,
-                pystray.Menu.SEPARATOR,
-                item("Start with Windows", toggle_autostart, checked=lambda it: autostart_enabled()),
-                item("Re-learn my hand size", lambda icon, it: self.on_relearn()),
-                item("Debug: save a picture of every gesture", lambda icon, it: self.on_debug(),
-                     checked=lambda it: self.debug_on()),
                 pystray.Menu.SEPARATOR,
                 item("Close Hand Mouse", lambda icon, it: self.on_close()),
             )
@@ -4537,9 +4500,6 @@ def run(preview: bool) -> bool:
     def set_screenshot_precision(enabled):
         screenshot_precision.set_enabled(enabled)
         save_state(screenshot_precision=bool(enabled))
-    sensitivity_window = SensitivityWindow(lambda: engine.sensitivity, engine.set_sensitivity,
-                                           lambda v: save_state(cursor_sensitivity=v),
-                                           lambda: screenshot_precision.enabled, set_screenshot_precision)
     def main_side_changed(side: str):
         save_state(main_side=side)
         beep(660)
@@ -4614,13 +4574,13 @@ def run(preview: bool) -> bool:
         tray.refresh()
         if RECORDER.on:
             tray.notify("Debug on: every gesture saves a picture to the debug folder in the Hand Mouse folder. "
-                        "Turn it off in this menu when you are done.")
+                        "Turn it off in Settings > General when you are done.")
 
     tray = TrayIcon(pause_evt.is_set, toggle_pause, quit_evt.set,
                     view_shown=view_evt.is_set, on_view=toggle_view, on_relearn=relearn,
                     gestures_off=lambda: engine.gestures_off, on_gestures=toggle_gestures,
-                    debug_on=lambda: RECORDER.on, on_debug=toggle_debug, on_sensitivity=sensitivity_window.show,
-                    on_profiles=profiles_window.show)
+                    debug_on=lambda: RECORDER.on, on_debug=toggle_debug,
+                    on_settings=profiles_window.show)
 
     def change_camera(index):
         if index == selected_camera(load_state()):
@@ -4634,6 +4594,17 @@ def run(preview: bool) -> bool:
     updates = UpdateChecker(tray.notify, quit_evt, state)
     tray.updates = updates
     updates.start()
+    profiles_window.settings = {
+        "get_camera": lambda: selected_camera(load_state()), "on_camera": change_camera,
+        "get_sensitivity": lambda: engine.sensitivity, "on_sensitivity": engine.set_sensitivity,
+        "save_sensitivity": lambda gain: save_state(cursor_sensitivity=gain),
+        "get_screenshot": lambda: screenshot_precision.enabled, "on_screenshot": set_screenshot_precision,
+        "get_autostart": autostart_enabled, "on_autostart": set_autostart,
+        "get_debug": lambda: RECORDER.on,
+        "on_debug": lambda desired: toggle_debug() if bool(desired) != RECORDER.on else None,
+        "on_relearn": relearn, "check_updates": updates.manual, "download": open_update_page,
+        "version": APP_VERSION, "help_html": HELP_HTML,
+    }
 
     def show_requested():
         view_evt.set()
@@ -4641,7 +4612,7 @@ def run(preview: bool) -> bool:
     threading.Thread(target=listen_for_show_requests, args=(show_requested, quit_evt),
                      daemon=True, name="show-listener").start()
     if not state.get("welcomed_v4"):
-        open_help()                     # first start of this version: show the gestures once
+        profiles_window.show("Help")    # first launch: guide inside the shared Settings window
         save_state(welcomed_v4=True)
         tray.notify("Hand Mouse is running. Click this icon to stop / resume, right-click for options.")
 
@@ -4876,7 +4847,6 @@ def run(preview: bool) -> bool:
     finally:
         engine.keys.pending = None
         engine.release_all(time.monotonic())
-        sensitivity_window.stop()
         profiles_window.stop()
         mouse.release_profile_inputs()
         RECORDER.wait()
