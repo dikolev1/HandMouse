@@ -71,7 +71,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.1.0"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.2.0"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60
@@ -2042,7 +2042,10 @@ class Engine:
             if self.volume is not None:
                 self.volume.set(new)
 
-    def release_all(self, now: float, keep_fists: bool = False):
+    def release_all(self, now: float, keep_fists: bool = False, keep_custom: bool = False):
+        if not keep_custom and hasattr(self, "custom_runtime"):
+            self.custom_runtime.cancel()
+            self.custom_was_busy = False
         self.clicks.reset(now)
         for st in self.sides.values():
             st.release()
@@ -2172,6 +2175,9 @@ class Engine:
             self.fist_stop_armed = False    # don't count fists that were already closed
 
         if not hands:
+            if hasattr(self, "custom_runtime"):
+                self.custom_runtime.cancel()
+                self.custom_was_busy = False
             self.wake.update([], now)
             self._rearm(True, now)              # hands out of view also allows the next two-fist switch
             if SECOND_HAND_KEYS and not self.gestures_off:
@@ -2202,6 +2208,21 @@ class Engine:
             hands = settled
         main = self._roles(hands, now)
         second = next((h for h in hands if h is not main), None) if main is not None else None
+        custom = getattr(self, "custom_runtime", None)
+        custom_busy = custom.observe(hands, now, not self.gestures_off) if custom is not None else False
+        custom_key = custom.machine.hand_key if custom_busy else None
+        if custom_busy and not getattr(self, "custom_was_busy", False):
+            self.keys.pending = None
+            if main is not None and custom_key == main.key:
+                self.release_all(now, keep_fists=True, keep_custom=True)
+            else:
+                self.keys.reset()
+                self.l_poses.pop(custom_key, None)
+                self.thumbs.pop(custom_key, None)
+                old_side = self.sides.pop(custom_key, None)
+                if old_side is not None:
+                    old_side.release()
+        self.custom_was_busy = custom_busy
         acting = hands if SECOND_HAND_GESTURES else [h for h in hands if h is main]    # hands whose gestures count
         l_busy, l_fired = set(), []
         self.l_poses = {key: pose for key, pose in self.l_poses.items() if key in self.tracks}
@@ -2209,6 +2230,9 @@ class Engine:
             self.l_poses.clear()
         else:
             for h in hands:
+                if h.key == custom_key:
+                    self.l_poses.pop(h.key, None)
+                    continue
                 pose = self.l_poses.setdefault(h.key, LKeyPose())
                 pose.repeat = getattr(self, "l_profile_repeat", True)
                 if pose.update(h, now):
@@ -2234,12 +2258,12 @@ class Engine:
             if h.key in l_busy:
                 self.fists[h.key] = FistScroll()
                 continue
-            fs.quiet = self.gestures_off or h not in acting     # (still followed: two fists need both hands)
+            fs.quiet = self.gestures_off or h.key == custom_key or h not in acting     # (still followed: two fists need both hands)
             if h.unsure:                        # finger shapes unreadable this frame: keep the last state
                 fs.follow(h)
                 fs.last_fist = now if fs.state != "idle" else fs.last_fist
             r = fs.hold_rate(self._k(h)) if h.unsure else fs.update(h, now, self._k(h))
-            if h not in acting:
+            if h not in acting or h.key == custom_key:
                 continue
             if abs(r) > abs(rate):
                 rate = r
@@ -2259,7 +2283,7 @@ class Engine:
         target = None
         if VOLUME_CONTROL and not self.gestures_off:
             for h in acting:
-                if h.key in l_busy:
+                if h.key in l_busy or h.key == custom_key:
                     self.thumbs.pop(h.key, None)
                     continue
                 tv = self.thumbs.setdefault(h.key, ThumbVolume())
@@ -2320,6 +2344,13 @@ class Engine:
                 self.status.insert(0, "GESTURES OFF - " + self.wake.hint)
             return
 
+        if custom_busy:
+            custom.dispatch(now)
+            self.gesture = custom.status or "recorded gesture"
+            if main is None or main.key == custom_key:
+                self._status(hands, main, 0.0, frozen=True)
+                return
+
         for h, side in l_fired:
             label, vk = ("Backspace", _VK_NAMES["backspace"]) if side == "left" else ("Enter", _VK_NAMES["enter"])
             try:
@@ -2367,21 +2398,21 @@ class Engine:
             if t is None or now - t.last_seen > LOST_GRACE:
                 self.sides.pop(key).release()
         for h in hands:
-            if h not in acting and h.key in self.sides:
+            if (h not in acting or h.key == custom_key) and h.key in self.sides:
                 self.sides.pop(h.key).release()
         if SIDE_BUTTONS:
             for h in acting:
                 st = self.sides.setdefault(h.key, SideButtonTracker(self.mouse))
                 if h.unsure:
                     continue                    # finger shapes unreadable this frame: keep the state
-                busy = h.key in l_busy or self.fists[h.key].busy or (h is main and (self.clicks.touching or self.clicks.pressed is not None))
+                busy = h.key == custom_key or h.key in l_busy or self.fists[h.key].busy or (h is main and (self.clicks.touching or self.clicks.pressed is not None))
                 st.update(h, now, suppress=busy)
                 if st.pressed:
                     self.gesture = "BUTTON 4 (back)" if st.pressed == "x1" else "BUTTON 5 (forward)"
 
         # --- window swipe (second hand only, both hands in view, not while it is making a fist)
         if (SWIPE_ENABLED and SECOND_HAND_GESTURES and second is not None and not self.fists[second.key].busy
-                and not (second.key in self.thumbs and self.thumbs[second.key].busy)):
+                and second.key != custom_key and not (second.key in self.thumbs and self.thumbs[second.key].busy)):
             direction = self.swiper.update(second, now, main, self._k(second))
             if direction:
                 self.do_swipe(direction, now)
@@ -2394,6 +2425,8 @@ class Engine:
             if main is None:
                 others = [h for h in hands if h.hand_side is not None and h.hand_side != self.main_side]
                 kh = others[0] if len(others) == 1 else None
+            if kh is not None and kh.key == custom_key:
+                kh = None
             if kh is not None and kh.key in l_busy:
                 self.keys.pending = None  # an L pose cancels a partial shortcut instead of firing it
                 self.keys.reset()
@@ -2535,6 +2568,8 @@ class Engine:
         b = self.boxcam
         fit = (f"{b.sx:.2f} x {b.sy:.2f}" if b.target is not None
                else f"learning your reach {len(b.samples)}/{BOX_FIT_SAMPLES[0]}")
+        if hasattr(self, "custom_runtime") and self.custom_runtime.busy:
+            self.status.append("recorded gesture: " + self.custom_runtime.status)
         if hasattr(self, "profile_name"):
             self.status.append(f"gesture profile: {self.profile_name}")
         self.status.append(f"cursor box: size {fit}{'   FOLLOWING your hand' if b.following else ''}")
@@ -3034,7 +3069,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
 <p>Your <b>right hand</b> moves the cursor and clicks; the left one gives keyboard shortcuts (below). Make a <b>fist twice</b> quickly with either hand to swap the main hand, with one or both hands visible. Open between fists and after the second fist. The app remembers the selected hand after a restart.</p>
 <p>Hand Mouse requests administrator approval at launch so gesture clicks can control the Windows on-screen keyboard. Approve the Windows prompt with a physical mouse or keyboard; cancelling leaves the app closed.</p>
 <h3>Gesture profiles</h3>
-<p>Tray → <b>Gesture profiles...</b>: duplicate the read-only Basic profile, select a gesture and save its binding, then <b>Save &amp; apply</b>. Profiles support key shortcuts, media keys, mouse actions, disabling a gesture and opening an application or file. Main-hand pinches can hold a key or button until release. Pause, reactivation and hand swapping stay reserved. Applying turns gestures off until you enable them again. Custom pose recording is planned separately.</p>
+<p>Tray → <b>Gesture profiles...</b>: duplicate the read-only Basic profile, select a gesture and save its binding, then <b>Save &amp; apply</b>. Profiles support key shortcuts, media keys, mouse actions, disabling a gesture and opening an application or file. Main-hand pinches can hold a key or button until release. Pause, reactivation and hand swapping stay reserved. Applying turns gestures off until you enable them again. Choose <b>Record custom...</b> for a pose, ordered pose sequence, or a pose followed by a left/right swipe. Guided recording keeps gestures off. Test mode recognizes the gesture without sending input. Save the recorded gesture, then Save &amp; apply the profile.</p>
 <h3>Tray icon (next to the clock)</h3>
 <ul><li><b>Left-click</b>: stop / resume tracking, camera off (red badge = stopped, orange badge = gestures off).</li>
 <li><b>Right-click</b>: Camera &amp; log window, Gestures on, Cursor sensitivity, Stop/Resume, Gestures help, Start with Windows, Re-learn my hand size, Close.</li>
@@ -4449,6 +4484,7 @@ def run(preview: bool) -> bool:
 
     from gesture_profiles import ProfileStore, ProfileMouse, configure_engine, apply_profile_to_engine
     from gesture_profiles_ui import ProfilesWindow
+    from gesture_custom import CustomRuntime
     import queue
     profiles = ProfileStore(os.path.join(HERE, "gesture_profiles.json"), parse_keys)
     profile_requests = queue.SimpleQueue()
@@ -4459,10 +4495,17 @@ def run(preview: bool) -> bool:
                     box_state=state.get("box"), main_side=state.get("main_side", "right"),
                     on_main_side=lambda side: main_side_changed(side), gestures_on=False,
                     cursor_sensitivity=state.get("cursor_sensitivity", 1.0))
+    def custom_conflict(h):
+        if is_l_pose(h): return "This pose overlaps an existing L-pose key."
+        if second_contact(h) is not None: return "This pose overlaps an existing thumb-contact gesture."
+        if min(click_distances(h)) < TOUCH_ON: return "This pose overlaps an existing mouse pinch."
+        return ""
+    custom_runtime = CustomRuntime(mouse, lambda: engine.set_gestures(False), lambda: view_evt.set(), custom_conflict)
+    engine.custom_runtime = custom_runtime
     profile_data = profiles.snapshot()
     configure_engine(engine, mouse, profile_data["profiles"][profile_data["active"]], SECOND_KEYS, parse_keys, key_label)
     engine.profile_name = profile_data["active"]
-    profiles_window = ProfilesWindow(profiles, profile_requests.put)
+    profiles_window = ProfilesWindow(profiles, profile_requests.put, custom_runtime)
     log.info("active gesture profile: %s", engine.profile_name)
     log.info("startup: camera on, gestures off; fists 1-3 s / open palms 1 s to enable")
     screenshot_precision = ScreenshotPrecision(engine.cursor, state.get("screenshot_precision", True) is True)
@@ -4726,6 +4769,7 @@ def run(preview: bool) -> bool:
             tick = now - fps_t >= 1.0
             engine.want_status = view_evt.is_set() or (tick and DIAGNOSTICS) or RECORDER.on
             engine.update(hands, now)
+            custom_runtime.feed(hands, now)
             if RECORDER.on or RECORDER.frames:
                 RECORDER.add(cv2, frame, hands, engine.status, now)
                 RECORDER.save_pending(cv2, np, now)

@@ -65,6 +65,15 @@ def action_label(action):
     return text+({"hold":" (hold until release)","repeat":" (repeat while held)"}.get(mode,""))
 
 
+def checked_bindings(bindings,parse_keys):
+    if not isinstance(bindings,dict): raise ValueError("Invalid bindings")
+    checked={source:validate_action(source,action,parse_keys) for source,action in bindings.items() if source!="__custom__"}
+    if "__custom__" in bindings:
+        from gesture_custom import validate_custom
+        checked["__custom__"]=validate_custom(bindings["__custom__"],parse_keys)
+    return checked
+
+
 class ProfileStore:
     def __init__(self,path,parse_keys):
         self.path,self.parse_keys=path,parse_keys
@@ -73,7 +82,7 @@ class ProfileStore:
         self.load_error=""
         if os.path.isfile(path):
             try:
-                if os.path.getsize(path)>1024*1024: raise ValueError("Profiles file is too large")
+                if os.path.getsize(path)>8*1024*1024: raise ValueError("Profiles file is too large")
                 with open(path,encoding="utf-8") as f: data=json.load(f)
                 if data.get("version")!=1 or not isinstance(data.get("profiles"),dict):
                     raise ValueError("Unsupported profiles format")
@@ -81,7 +90,7 @@ class ProfileStore:
                 for name,bindings in data["profiles"].items():
                     self.name(name)
                     if not isinstance(bindings,dict): raise ValueError("Invalid bindings")
-                    checked={source:validate_action(source,action,parse_keys) for source,action in bindings.items()}
+                    checked=checked_bindings(bindings,parse_keys)
                     if name==BASIC and checked: raise ValueError("Basic profile must stay unchanged")
                     profiles[name]=checked
                 active=data.get("active",BASIC)
@@ -101,6 +110,9 @@ class ProfileStore:
         with self.lock: return deepcopy(self.data)
 
     def _write(self,data):
+        if len(data["profiles"])>64: raise ValueError("Use at most 64 profiles.")
+        payload=json.dumps(data,ensure_ascii=False,indent=2)
+        if len(payload.encode("utf-8"))>8*1024*1024: raise ValueError("Saved profiles exceed 8 MB. Remove unused recorded gestures first.")
         folder=os.path.dirname(os.path.abspath(self.path))
         os.makedirs(folder,exist_ok=True)
         # Preserve a malformed user file before any subsequent explicit save.
@@ -111,7 +123,7 @@ class ProfileStore:
         fd,temp=tempfile.mkstemp(prefix=".profiles-",suffix=".tmp",dir=folder)
         try:
             with os.fdopen(fd,"w",encoding="utf-8") as f:
-                json.dump(data,f,ensure_ascii=False,indent=2)
+                f.write(payload)
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(temp,self.path)
@@ -124,7 +136,7 @@ class ProfileStore:
         name=self.name(name)
         if name==BASIC: raise ValueError("Basic is read-only. Duplicate it to customize gestures.")
         if not isinstance(bindings,dict): raise ValueError("Invalid bindings")
-        checked={source:validate_action(source,a,self.parse_keys) for source,a in bindings.items()}
+        checked=checked_bindings(bindings,self.parse_keys)
         with self.lock:
             data=self.snapshot()
             data["profiles"][name]=checked
@@ -243,6 +255,8 @@ def configure_engine(engine,mouse,bindings,second_defaults,parse_keys,key_label)
     # Called on the gesture thread, after pending gestures have been discarded and inputs released.
     mouse.release_profile_inputs()
     mouse.bindings=deepcopy(bindings)
+    if hasattr(engine,"custom_runtime"):
+        engine.custom_runtime.configure(bindings.get("__custom__",[]))
     actions={}
     for name,text in second_defaults.items():
         source="second:"+name

@@ -9,8 +9,9 @@ TYPE_LABELS={"Basic action":"default","Disabled":"disabled","Key / shortcut / me
              "Mouse button":"mouse","On-screen keyboard":"keyboard","Open application / file":"open"}
 
 class ProfilesWindow:
-    def __init__(self,store,on_apply):
+    def __init__(self,store,on_apply,custom=None):
         self.store,self.on_apply=store,on_apply
+        self.custom=custom
         self.show_evt,self.stop_evt=threading.Event(),threading.Event()
         self.lock=threading.Lock()
         self.thread=None
@@ -41,7 +42,7 @@ class ProfilesWindow:
         root.withdraw()
         root.title("Hand Mouse - Gesture profiles")
         root.minsize(780,640)
-        root.geometry("860x680")
+        root.geometry("900x720")
         root.columnconfigure(0,weight=1)
         root.rowconfigure(0,weight=1)
         frame=ttk.Frame(root,padding=16)
@@ -90,6 +91,7 @@ class ProfilesWindow:
             if path:
                 kind.set("Open application / file")
                 value.set(path)
+                held.set(False);repeated.set(False)
         ttk.Button(edit,text="Browse...",command=browse).grid(row=2,column=2,padx=(8,0))
         hold=ttk.Checkbutton(edit,text="Hold keys / button until pinch is released",variable=held)
         hold.grid(row=3,column=0,columnspan=3,sticky="w")
@@ -113,6 +115,8 @@ class ProfilesWindow:
             tree.delete(*tree.get_children())
             for source,label in GESTURES.items():
                 tree.insert("","end",iid=source,values=(label,action_label(draft.get(source))))
+            for d in draft.get("__custom__",[]):
+                tree.insert("","end",iid="custom:"+d["id"],values=("Recorded: "+d["name"],action_label(d["action"])))
             basic=choice.get()==BASIC
             type_box.configure(state="disabled" if basic else "readonly")
             entry.configure(state="disabled" if basic else "normal")
@@ -137,14 +141,19 @@ class ProfilesWindow:
             rows=tree.selection()
             if not rows: return
             source=rows[0]
-            selected.set(GESTURES[source])
-            action=draft.get(source,{"kind":"default","value":"","mode":"tap"})
+            recorded=next((d for d in draft.get("__custom__",[]) if "custom:"+d["id"]==source),None)
+            selected.set("Recorded: "+recorded["name"] if recorded else GESTURES[source])
+            action=recorded["action"] if recorded else draft.get(source,{"kind":"default","value":"","mode":"tap"})
             kind.set(next(label for label,k in TYPE_LABELS.items() if k==action["kind"]))
             value.set(action.get("value",""))
             held.set(action.get("mode")=="hold")
             repeated.set(action.get("mode")=="repeat")
-            repeat.configure(state="normal" if source=="l:left" and choice.get()!=BASIC else "disabled")
-            hold.configure(state="normal" if source in MOUSE_GESTURES and choice.get()!=BASIC else "disabled")
+            pose_recorded = recorded is not None and recorded["steps"][-1]["kind"]=="pose"
+            type_box.configure(values=[k for k in TYPE_LABELS if recorded is None or k!="Basic action"])
+            repeat.configure(text="Repeat while recorded pose is held" if recorded else "Repeat while the left L pose is held",
+                             state="normal" if (source=="l:left" or pose_recorded) and choice.get()!=BASIC else "disabled")
+            hold.configure(text="Hold keys / button until pose is released" if recorded else "Hold keys / button until pinch is released",
+                           state="normal" if (source in MOUSE_GESTURES or pose_recorded) and choice.get()!=BASIC else "disabled")
 
         def save_binding():
             nonlocal dirty
@@ -154,11 +163,21 @@ class ProfilesWindow:
             if not rows: error(ValueError("Select a gesture first.")); return
             source=rows[0]
             try:
-                action=validate_action(source,{"kind":TYPE_LABELS[kind.get()],"value":value.get(),
-                    "mode":"repeat" if repeated.get() else ("hold" if held.get() else "tap")},self.store.parse_keys)
-                if action["kind"]=="default": draft.pop(source,None)
-                else: draft[source]=action
-                tree.item(source,values=(GESTURES[source],action_label(action)))
+                raw={"kind":TYPE_LABELS[kind.get()],"value":value.get(),
+                     "mode":"repeat" if repeated.get() else ("hold" if held.get() else "tap")}
+                recorded=next((d for d in draft.get("__custom__",[]) if "custom:"+d["id"]==source),None)
+                if recorded is not None:
+                    from gesture_custom import validate_custom
+                    definitions=deepcopy(draft["__custom__"])
+                    changed=next(d for d in definitions if d["id"]==recorded["id"])
+                    changed["action"],changed["behavior"]=raw,raw["mode"]
+                    draft["__custom__"]=validate_custom(definitions,self.store.parse_keys)
+                    tree.item(source,values=("Recorded: "+recorded["name"],action_label(raw)))
+                else:
+                    action=validate_action(source,raw,self.store.parse_keys)
+                    if action["kind"]=="default": draft.pop(source,None)
+                    else: draft[source]=action
+                    tree.item(source,values=(GESTURES[source],action_label(action)))
                 dirty=True
                 note.set("Binding saved in this draft. Click Save & apply to store and activate the profile.")
             except Exception as exc: error(exc)
@@ -211,25 +230,64 @@ class ProfilesWindow:
                 active.set("Active: "+choice.get())
                 note.set("Saved and applied. Gestures are off; enable them when ready.")
             except Exception as exc: error(exc)
+        def record_custom():
+            if choice.get()==BASIC: error(ValueError("Duplicate Basic before adding recorded gestures.")); return
+            if self.custom is None: error(ValueError("Camera recording is unavailable.")); return
+            from gesture_custom_ui import record_dialog
+            def saved(definition):
+                nonlocal dirty
+                draft.setdefault("__custom__",[]).append(definition)
+                dirty=True
+                redraw()
+                note.set("Recorded gesture added to this draft. Click Save & apply to activate the profile.")
+            record_dialog(root,self.custom,draft.get("__custom__",[]),self.store.parse_keys,saved)
+        def test_custom():
+            rows=tree.selection()
+            d=next((d for d in draft.get("__custom__",[]) if rows and "custom:"+d["id"]==rows[0]),None)
+            if d is None: error(ValueError("Select a recorded gesture first.")); return
+            if self.custom is None: error(ValueError("Camera testing is unavailable.")); return
+            from gesture_custom_ui import test_dialog
+            test_dialog(root,self.custom,d)
+        def delete_custom():
+            nonlocal dirty
+            rows=tree.selection()
+            d=next((d for d in draft.get("__custom__",[]) if rows and "custom:"+d["id"]==rows[0]),None)
+            if d is None: error(ValueError("Select a recorded gesture first.")); return
+            if not messagebox.askyesno("Remove recorded gesture","Remove "+d["name"]+" from this profile?",parent=root): return
+            draft["__custom__"]=[x for x in draft["__custom__"] if x["id"]!=d["id"]]
+            dirty=True
+            redraw()
         def hide():
             nonlocal dirty
             if dirty and not messagebox.askyesno("Unsaved bindings","Discard unsaved bindings and close?",parent=root): return
             dirty=False
             load()
+            if self.custom is not None: self.custom.stop_training()
+            for child in root.winfo_children():
+                if isinstance(child,tk.Toplevel): child.destroy()
             root.withdraw()
+        ttk.Button(header,text="Record custom...",command=record_custom).pack(side="right",padx=3)
+        ttk.Button(edit,text="Test recorded",command=test_custom).grid(row=6,column=0,sticky="w",pady=(8,0))
+        ttk.Button(edit,text="Remove recorded",command=delete_custom).grid(row=6,column=2,sticky="e",pady=(8,0))
         ttk.Button(header,text="New",command=lambda:create(False)).pack(side="left",padx=3)
         ttk.Button(header,text="Duplicate",command=lambda:create(True)).pack(side="left",padx=3)
         ttk.Button(header,text="Rename",command=rename).pack(side="left",padx=3)
         ttk.Button(header,text="Delete",command=delete).pack(side="left",padx=3)
         ttk.Button(footer,text="Save & apply",command=apply).pack(side="left")
         ttk.Button(footer,text="Close",command=hide).pack(side="right")
+        def action_type_changed(event=None):
+            if TYPE_LABELS[kind.get()] not in ("keys","mouse"):
+                held.set(False);repeated.set(False)
+        type_box.bind("<<ComboboxSelected>>",action_type_changed)
         tree.bind("<<TreeviewSelect>>",selected_changed)
         profiles.bind("<<ComboboxSelected>>",load)
         root.protocol("WM_DELETE_WINDOW",hide)
         load()
         if self.store.load_error: note.set("Could not load saved profiles: "+self.store.load_error+". Basic is active.")
         def poll():
-            if self.stop_evt.is_set(): root.destroy(); return
+            if self.stop_evt.is_set():
+                if self.custom is not None: self.custom.stop_training()
+                root.destroy(); return
             if self.show_evt.is_set():
                 self.show_evt.clear()
                 active.set("Active: "+self.store.snapshot()["active"])

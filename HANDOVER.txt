@@ -290,3 +290,28 @@ sequences in this first stage; that remains the next stage of the previously dis
 Tests cover default compatibility, file failure/recovery, validation, input release, queued apply,
 and real Tk edit/apply/duplicate/rename/delete workflow. UI tests must use plain patched dialog
 functions: MagicMock call history retains parent Tk objects and can destroy them on the wrong thread.
+
+Recorded custom gestures/combinations (1.2.0): user explicitly requested including recording now,
+so the prior first-stage deferral is superseded. gesture_custom.py contains pose_feature (45
+palm-normalized 3D landmark-pair distances, invariant to translation/scale/rotation), capture
+calibration (4 s after 1 s preparation, >=12 samples, <=5 angle templates), validation and the
+PoseMachine/CustomRuntime. gesture_custom_ui.py is the record/test dialog on the existing profile
+Tk thread. Deploy BOTH new helpers before the app script. No additional dependencies.
+Custom definitions live as __custom__ lists inside profile binding dictionaries in the same atomic
+private JSON file (schema 1 remains compatible). Profile copy/rename/delete includes definitions.
+At most 30 custom gestures/profile, 64 profiles, 8 MB file. Writes reject oversize before replacing.
+Kinds: single pose; ordered 2-5 pose sequence; one pose + left/right swipe. Runtime supports a swipe
+as a final step and five-second step deadlines. First poses cannot be open palms or fists; later
+single-hand steps can be. Same-hand ambiguous first poses/prefixes are rejected; built-in overlap
+is warned before save. Step dwell is 0.25 s; rearm requires 0.25 s pose release. Swipes stay latched
+until pose release. Held actions release immediately on lost/unreadable hands, pause, profile change
+or quit; other-hand held modifiers allow main-hand movement/clicks. Main-hand custom poses suppress
+that hand's normal input. Emergency two-fist control and hand swapping remain higher priority.
+Runtime.observe runs after hand role assignment, before normal L/volume/click output; dispatch runs
+only after pause/activation checks. Runtime.feed runs after engine.update, also while gestures are
+off, so recording and dry-test modes receive landmarks/physical hand roles without sending input.
+Training calls engine.set_gestures(False), opens preview, and tests with a separate PoseMachine.
+Only landmark templates are saved by recording, never images (existing debug feature is separate).
+Tests cover geometry invariance, ambiguity, sequences, swipe latching, retries, capture/test no-input,
+modifier+cursor coexistence, reserved pause, persistence and real Tk record/test/save/rebind/remove.
+User webcam calibration still needs their own recorded examples and recognition testing.

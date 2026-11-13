@@ -57,12 +57,45 @@ cannot be edited or deleted. Choose **Duplicate** or **New**, give the profile a
 Profiles support the existing main-hand button gestures, other-hand shortcuts/media gestures and both
 physical L poses. Recognition and gesture timing stay the same. Cursor movement, fist scrolling,
 volume control, main-hand swapping, pause and reactivation remain unchanged/reserved.
-New-pose recording and user-defined gesture sequences are the next stage and are not part of this version.
+You can also add camera-recorded poses and combinations to a custom profile, as described below.
 
 Use the profile list and **Save & apply** to switch profiles. **Rename** and **Delete** manage saved
 profiles. Deleting an active profile restores Basic with gestures off. Profile data is stored locally
 in `gesture_profiles.json` beside the app, separately from sensitivity/camera settings and excluded from
 Git. A malformed profile file falls back to Basic and is backed up before the next explicit save.
+
+## Record new poses and combinations
+
+1. Open **Tray → Gesture profiles...** and select your own profile (duplicate Basic first).
+2. Click **Record custom...**. Give the gesture a name and choose the physical left/right hand,
+   main/other hand, or either hand. For Either, keep just one hand visible while recording.
+3. Choose **Single pose**, **Pose sequence**, **Pose + swipe left**, or **Pose + swipe right**.
+4. Click **Record next pose**. There is one second to prepare, then four seconds of recording.
+   Keep the finger shape steady and the whole hand visible; gently vary its angle. For a sequence,
+   record each pose separately in order (2-5 steps). For a swipe, record one pose, then perform it
+   while moving in the selected direction. The first pose must be distinct from open palms/fists,
+   which are reserved. Those shapes can be later steps in a single-hand combination.
+5. Choose a shortcut, media key, mouse action, keyboard toggle or application/file. Select **Once**,
+   **Hold until release**, or **Repeat while held**. Hold/repeat work for keys and mouse buttons;
+   swipe combinations act once. Each pose step must be held briefly (about a quarter second).
+6. Click **Test recognition (no input)**. The dialog reports recognized attempts without sending
+   keys or clicks. Release between attempts and try several distances/angles. Adjust/re-record if
+   recognition is unreliable. Identical/ambiguous first poses in the same profile are rejected.
+   Overlap with an existing built-in gesture is reported before saving; a recorded gesture takes
+   priority for its chosen hand while recognized. Reserved pause/reactivation always takes priority.
+7. Click **Save recorded gesture**, then **Save & apply** in the profile window. Enable gestures
+   when ready. The selected profile, templates and bindings survive app/PC restarts.
+
+Recording/testing keeps gestures off and opens the camera preview. You can edit a recorded gesture's
+action, test it again, or remove it from the main profile editor. To re-record a shape, remove it and
+record a replacement. When recording sequences, use **Remove last step** to redo a step. To model
+"pose twice", record pose → open → pose. Hold a modifier with the other hand to keep using the main
+hand for cursor movement/clicks; a custom gesture performed by the main hand freezes its normal input.
+
+Recordings store normalized landmark measurements, not camera images. Existing optional debug-image
+saving is separate. Templates are personal: test them with your own camera/lighting. Tracking loss,
+pausing, changing profiles or quitting releases held custom inputs. A pose must be released before
+it can act again; holding a completed swipe does not repeat it. Sequences time out between steps.
 
 ## Gestures
 
