@@ -441,3 +441,10 @@ Short or overlong holds do not enable. An overlong hold cannot start another tim
 fists remain closed; open palms for one second to reset before retrying. Hands must stay
 visible/readable throughout. Normal finger-unfolding gets a 0.7-second transition window.
 The one-second pause gesture and manual tray controls are unchanged.
+
+Wake feedback (1.0.7): a short high beep at 1.5 seconds means the fist hold is sufficient:
+open both palms and keep them open for one second. A longer low beep means the hold
+exceeded three seconds or the palms did not open within the transition window. Gestures
+stay off. Each cue fires once per attempt, not per frame; release/reset allows a new attempt.
+Cues use the existing nonblocking beep helper and respect SOUNDS. Activation still has its
+existing confirmation tones. Timing and safety rules are unchanged.

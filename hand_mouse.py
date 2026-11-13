@@ -71,7 +71,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.0.6"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.0.7"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60
@@ -1834,6 +1834,7 @@ class GestureWake:
     def reset(self):
         self.phase, self.since, self.deadline = "fists", None, None
         self.pair, self.last = None, None
+        self.feedback, self.ready = None, False
 
     @property
     def hint(self):
@@ -1842,6 +1843,7 @@ class GestureWake:
                 "blocked": "open both palms for 1 second, then try again"}[self.phase]
 
     def update(self, hands, now):
+        self.feedback = None
         pair = frozenset(h.key for h in hands)
         if (len(hands) != 2 or any(h.unsure or not fully_in_view(h) for h in hands)
                 or (self.pair is not None and pair != self.pair)
@@ -1858,7 +1860,11 @@ class GestureWake:
             elapsed = now-self.since
             if elapsed > 3 + 1e-6:
                 self.phase, self.since = "blocked", None
-            elif not fists:
+                self.feedback = "overheld"
+            else:
+                if elapsed >= 1.5 - 1e-6 and not self.ready:
+                    self.ready, self.feedback = True, "ready"
+            if self.phase == "hold" and not fists:
                 if elapsed < 1.5 - 1e-6:
                     self.reset()
                 elif opened:
@@ -1868,6 +1874,7 @@ class GestureWake:
         elif self.phase == "opening":
             if now > self.deadline or fists:
                 self.phase, self.since = "blocked", None
+                self.feedback = "overheld"
             elif opened:
                 self.phase, self.since = "release", now
         elif self.phase == "release":
@@ -2972,7 +2979,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Mouse button 5 (Forward)</h2><p>Palm towards the camera, fingers up. Fold your thumb across the palm onto the <b>palm under your ring / little finger</b> (from their base about halfway down).</p></div>
  <div class="card"><h2>Volume</h2><p><b>Thumbs-up</b> (fingers folded, thumb out) and hold it a moment. Thumb straight up = 100%. Turn your hand until the thumb points down to lower the volume step by step to 0%. Tuck the thumb in to stop.</p></div>
  <div class="card"><h2>Scroll</h2><p>Make a <b>fist</b>. Move the fist down to scroll down, up to scroll up, left / right to scroll sideways. The further from where you closed it, the faster. Open the hand to stop.</p></div>
- <div class="card"><h2>Gestures off / on</h2><p>Hold <b>both</b> hands as fists for a second (beep first). Gestures turn off (orange badge on the tray icon): the cursor and all gestures ignore your hands. To enable again: hold both fists for 1.5-3 seconds, then keep both palms open for one second. Gestures stay off until that final opening. To stop the camera completely, click the tray icon.</p></div>
+ <div class="card"><h2>Gestures off / on</h2><p>Hold <b>both</b> hands as fists for a second (beep first). Gestures turn off (orange badge on the tray icon): the cursor and all gestures ignore your hands. To enable again: hold both fists for 1.5-3 seconds, then keep both palms open for one second. A short high beep means the minimum fist hold is reached: open both palms now. A longer low beep means the hold or opening transition expired; try again. Gestures stay off until the one-second opening finishes. To stop the camera completely, click the tray icon.</p></div>
 </div>
 <h3>Left hand: keyboard shortcuts</h3>
 <p class="lead">With your other hand (the left one). A pinch acts when the thumb lets go. These are the default shortcuts; they can be changed in <code>SECOND_KEYS</code> at the top of hand_mouse.py.</p>
@@ -4662,6 +4669,10 @@ def run(preview: bool) -> bool:
             if RECORDER.on or RECORDER.frames:
                 RECORDER.add(cv2, frame, hands, engine.status, now)
                 RECORDER.save_pending(cv2, np, now)
+            if engine.wake.feedback == "ready":
+                beep(880, 90)            # minimum hold reached: open both palms now
+            elif engine.wake.feedback == "overheld":
+                beep(220, 180)           # activation attempt expired; gestures stay off
             if engine.both_fists_since is not None and not stop_warned:
                 stop_warned = True
                 beep(520, 120)          # countdown started

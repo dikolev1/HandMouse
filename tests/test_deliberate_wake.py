@@ -14,6 +14,7 @@ class WakeTests(unittest.TestCase):
         self.mouse=V.FakeMouse()
         self.e=hm.Engine(self.mouse,0,0,1920,1080,gestures_on=False)
         self.t=0
+        self.feedback=[]
 
     def feed(self,pose,seconds):
         for _ in range(round(seconds*30)):
@@ -23,6 +24,7 @@ class WakeTests(unittest.TestCase):
             if pose=="one": hands=hands[:1]
             if pose=="uncertain": hands[0].unsure=True
             self.e.update(hands,self.t)
+            if self.e.wake.feedback: self.feedback.append(self.e.wake.feedback)
             self.t+=1/30
 
     def test_resting_fists_and_hiding_hands_never_enable(self):
@@ -66,6 +68,31 @@ class WakeTests(unittest.TestCase):
             self.feed(interruption,.1)
             self.feed("open",1.2)
             self.assertTrue(self.e.gestures_off)
+
+    def test_ready_beeps_once_and_overhold_beeps_once(self):
+        self.feed("fists",1.2)
+        self.assertEqual(self.feedback,[])
+        self.feed("fists",.6)
+        self.assertEqual(self.feedback,["ready"])
+        self.feed("fists",5)
+        self.assertEqual(self.feedback,["ready","overheld"])
+        self.assertTrue(self.e.gestures_off)
+        self.feed("open",1.2)
+        self.feed("fists",2)
+        self.assertEqual(self.feedback,["ready","overheld","ready"])
+
+    def test_valid_opening_never_gives_negative_feedback(self):
+        self.feed("fists",2)
+        self.feed("open",1.2)
+        self.assertFalse(self.e.gestures_off)
+        self.assertEqual(self.feedback,["ready"])
+
+    def test_short_or_lost_hold_does_not_give_ready_feedback(self):
+        self.feed("fists",1)
+        self.feed("lost",.1)
+        self.feed("fists",1)
+        self.feed("open",1.2)
+        self.assertEqual(self.feedback,[])
 
     def test_minimum_and_maximum_hold_are_accepted(self):
         for duration in (1.5,3):
