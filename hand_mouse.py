@@ -4798,9 +4798,8 @@ def run(preview: bool) -> bool:
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             hands = sensor.process(rgb, ts, now)
             if debug_view_hold.update(hands, now, RECORDER.on):
-                view_evt.set()
-                tray.refresh()
-                log.info("debug camera shortcut: two-second three-finger hold")
+                toggle_view()
+                log.info("debug camera shortcut: camera window %s", "opened" if view_evt.is_set() else "closed")
             frames += 1
             frames_total += 1
             tick = now - fps_t >= 1.0
