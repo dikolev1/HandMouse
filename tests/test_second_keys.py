@@ -189,7 +189,7 @@ check("moved right, then thumb tucked in -> next track only (no play/pause, no E
 m, e = run(START + hold(0.3, 6) + move(0.3, 0.37, 6) + N(8, both(None, 0.37)) + REST)
 check("small drift (less than a step), then open -> play/pause only", keys(m) == PP, keys(m))
 # 2026-10-16 11:42: five skips in 1.6 s (back, back, next, next, back) while the hand moved back and forth
-wobble = [both("thumbs", 0.4 + 0.07 * (1 if (k // 3) % 2 else -1)) for k in range(30)]
+wobble = [(lambda t, x=0.4 + 0.07 * (1 if (k // 3) % 2 else -1): [rotated_thumb(12.5, px=x), right()]) for k in range(30)]
 m, e = run(START + hold(0.4, 6) + wobble + REST)
 check("music pose wobbling +-0.07, then open -> play/pause, no skips", keys(m) == PP, keys(m))
 def run_small(frames, fps=16):

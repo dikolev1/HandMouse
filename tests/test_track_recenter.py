@@ -32,7 +32,7 @@ class TrackRecenter(unittest.TestCase):
         self.assertEqual(T.keys(m), [("keys", (T.K["playpause"],))])
 
     def test_threshold_and_release_after_rotation(self):
-        for angle, expected in ((14, []), (18, ["nexttrack"]), (-18, ["prevtrack"])):
+        for angle, expected in ((10, []), (12, ["nexttrack"]), (-12, ["prevtrack"])):
             m=T.V.FakeMouse(); e=T.hm.SecondHandKeys(m)
             for i in range(16): e.update(T.rotated_thumb(0),i/16)
             for i in range(32): e.update(T.rotated_thumb(angle),1+i/16)
@@ -51,12 +51,12 @@ class TrackRecenter(unittest.TestCase):
                 self.assertEqual(events, [("keys", (T.K[action],))])
 
     def test_return_then_swipe_same_direction(self):
-        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .45) + [(.45, 12, 1.0)]
+        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .45) + [(.45, 6, 1.0)]
                                  + self.move(.45, .64))
         self.assertEqual(events, [("keys", (T.K["nexttrack"],))] * 2)
 
     def test_return_then_swipe_opposite_direction(self):
-        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .45) + [(.45, 12, 1.0)]
+        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .45) + [(.45, 6, 1.0)]
                                  + self.move(.45, .26))
         self.assertEqual(events, [("keys", (T.K["nexttrack"],)), ("keys", (T.K["prevtrack"],))])
 
