@@ -32,7 +32,7 @@ class TrackRecenter(unittest.TestCase):
         self.assertEqual(T.keys(m), [("keys", (T.K["playpause"],))])
 
     def test_threshold_and_release_after_rotation(self):
-        for angle, expected in ((10, []), (12, ["nexttrack"]), (-12, ["prevtrack"])):
+        for angle, expected in ((7, []), (9, ["nexttrack"]), (-9, ["prevtrack"])):
             m=T.V.FakeMouse(); e=T.hm.SecondHandKeys(m)
             for i in range(16): e.update(T.rotated_thumb(0),i/16)
             for i in range(32): e.update(T.rotated_thumb(angle),1+i/16)

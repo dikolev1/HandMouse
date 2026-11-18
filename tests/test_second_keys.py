@@ -186,7 +186,7 @@ m, e = run(START + hold(0.3, 6) + move(0.3, 0.58, 14) + hold(0.58, 8) + REST)
 check("one long right swipe -> next track once", keys(m) == NEXT, keys(m))
 m, e = run(START + hold(0.3, 6) + move(0.3, 0.45, 6) + N(8, both("fist", 0.45)) + REST)
 check("moved right, then thumb tucked in -> next track only (no play/pause, no Esc)", keys(m) == NEXT, keys(m))
-m, e = run(START + hold(0.3, 6) + move(0.3, 0.37, 6) + N(8, both(None, 0.37)) + REST)
+m, e = run(START + hold(0.3, 6) + move(0.3, 0.35, 6) + N(8, both(None, 0.35)) + REST)
 check("small drift (less than a step), then open -> play/pause only", keys(m) == PP, keys(m))
 # 2026-10-16 11:42: five skips in 1.6 s (back, back, next, next, back) while the hand moved back and forth
 wobble = [(lambda t, x=0.4 + 0.07 * (1 if (k // 3) % 2 else -1): [rotated_thumb(12.5, px=x), right()]) for k in range(30)]
