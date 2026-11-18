@@ -4360,6 +4360,40 @@ def draw_panel(cv2, np, height: int, engine, paused: bool):
     return panel
 
 
+def activate_camera_window():
+    """Activate only our existing camera window, after the UI thread has displayed it."""
+    import ctypes as c
+    u, k = c.WinDLL("user32"), c.WinDLL("kernel32")
+    u.FindWindowW.argtypes = [c.c_wchar_p, c.c_wchar_p]
+    u.FindWindowW.restype = c.c_void_p
+    u.GetForegroundWindow.restype = c.c_void_p
+    u.GetWindowThreadProcessId.argtypes = [c.c_void_p, c.c_void_p]
+    u.GetWindowThreadProcessId.restype = c.c_ulong
+    k.GetCurrentThreadId.restype = c.c_ulong
+    u.AttachThreadInput.argtypes = [c.c_ulong, c.c_ulong, c.c_int]
+    for name in ("BringWindowToTop", "SetForegroundWindow", "SetFocus"):
+        getattr(u,name).argtypes = [c.c_void_p]
+    u.SetFocus.restype = c.c_void_p
+    u.ShowWindow.argtypes = [c.c_void_p, c.c_int]
+    hwnd = u.FindWindowW(None, WINDOW)
+    if not hwnd:
+        return False
+    foreground = u.GetForegroundWindow()
+    other = u.GetWindowThreadProcessId(foreground,None) if foreground else 0
+    current = k.GetCurrentThreadId()
+    attached = bool(other and other != current and u.AttachThreadInput(current,other,True))
+    try:
+        u.ShowWindow(hwnd,9)  # restore if minimized
+        u.BringWindowToTop(hwnd)
+        activated = bool(u.SetForegroundWindow(hwnd))
+        if activated:
+            u.SetFocus(hwnd)
+        return activated
+    finally:
+        if attached:
+            u.AttachThreadInput(current,other,False)
+
+
 class ViewWindow:
     """The camera & log window, run by its own thread. Windows pauses a window's thread while the window is
     dragged by its title bar; the hand tracking must keep running meanwhile (it has to let go of the mouse
@@ -4373,6 +4407,7 @@ class ViewWindow:
         self.lock = threading.Lock()
         self.frame, self.seq = None, 0
         self.want = False
+        self.activate_evt = threading.Event()
         self.closed_by_user = False
         self.stop_flag = False
         self.thread = threading.Thread(target=self._run, daemon=True, name="camera-window")
@@ -4387,6 +4422,10 @@ class ViewWindow:
     def hide(self):
         with self.lock:
             self.want, self.frame = False, None
+            self.activate_evt.clear()
+
+    def activate(self):
+        self.activate_evt.set()
 
     def take_closed(self) -> bool:
         """True once after the user closed the window (X button, Esc or q)."""
@@ -4463,6 +4502,13 @@ class ViewWindow:
                     cv2.imshow(WINDOW, frame)
                     shown = seq
                 key = cv2.waitKey(15) & 0xFF
+                if self.activate_evt.is_set():
+                    self.activate_evt.clear()
+                    try:
+                        if not activate_camera_window():
+                            log.info("camera window activation was declined by Windows")
+                    except Exception:
+                        log.exception("could not activate camera window")
                 visible = True
                 try:
                     visible = cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE) >= 1
@@ -4799,6 +4845,8 @@ def run(preview: bool) -> bool:
             hands = sensor.process(rgb, ts, now)
             if debug_view_hold.update(hands, now, RECORDER.on):
                 toggle_view()
+                if view_evt.is_set():
+                    view.activate()
                 log.info("debug camera shortcut: camera window %s", "opened" if view_evt.is_set() else "closed")
             frames += 1
             frames_total += 1

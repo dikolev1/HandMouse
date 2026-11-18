@@ -386,3 +386,5 @@ monitor origins via SetWindowPos. Snapshot/dispatch failures fall back to the na
 No system-wide theme settings are changed. Deploy tray_popup.py before updating the live script.
 
 Debug camera shortcut (v1.3.4): with Settings > General > Debug enabled, hold thumb/index/middle extended and ring/little folded for 2 seconds to toggle Camera & log (open when hidden, close when visible). Either hand; one toggle per continuous hold, release before retrying. Works while gestures are off if camera tracking is running. Disabled Debug mode and paused camera reset the hold.
+
+Opening Camera & log with the debug hold also restores and activates its window once, after the camera UI displays it. Closing with the pose still works; normal frame updates do not steal focus.
