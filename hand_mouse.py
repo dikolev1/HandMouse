@@ -1787,13 +1787,14 @@ class DebugViewHold:
         self.holds = {}
         self.last = None
 
-    def update(self, hands, now, enabled):
+    def update(self, hands, now, enabled, main_side="right"):
         if not enabled or (self.last is not None and now-self.last > 0.35):
             self.holds.clear()
         self.last = now
         if not enabled:
             return False
-        visible = {h.key for h in hands if is_debug_view_pose(h)}
+        visible = {h.key for h in hands if h.hand_side is not None
+                   and h.hand_side != main_side and is_debug_view_pose(h)}
         self.holds = {key:value for key,value in self.holds.items() if key in visible}
         fired = False
         for key in visible:
@@ -4843,16 +4844,16 @@ def run(preview: bool) -> bool:
             last_ts = ts
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             hands = sensor.process(rgb, ts, now)
-            if debug_view_hold.update(hands, now, RECORDER.on):
-                toggle_view()
-                if view_evt.is_set():
-                    view.activate()
-                log.info("debug camera shortcut: camera window %s", "opened" if view_evt.is_set() else "closed")
             frames += 1
             frames_total += 1
             tick = now - fps_t >= 1.0
             engine.want_status = view_evt.is_set() or (tick and DIAGNOSTICS) or RECORDER.on
             engine.update(hands, now)
+            if debug_view_hold.update(hands, now, RECORDER.on, engine.main_side):
+                toggle_view()
+                if view_evt.is_set():
+                    view.activate()
+                log.info("debug camera shortcut: camera window %s", "opened" if view_evt.is_set() else "closed")
             custom_runtime.feed(hands, now)
             if RECORDER.on or RECORDER.frames:
                 RECORDER.add(cv2, frame, hands, engine.status, now)

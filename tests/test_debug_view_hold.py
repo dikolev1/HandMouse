@@ -17,7 +17,9 @@ def pose(side="Left",angle=0,scale=1):
         x,y=(x-.5)*scale,(y-.3)*scale
         if side=="Left": x=-x
         points.append((.5+x*math.cos(a)-y*math.sin(a),(.3+x*math.sin(a)+y*math.cos(a))/h.aspect))
-    return hm.Hand(side,points,h.world,aspect=h.aspect)
+    result=hm.Hand(side,points,h.world,aspect=h.aspect)
+    result.hand_side=side.lower()
+    return result
 
 class DebugViewTests(unittest.TestCase):
     def test_pose_and_other_gestures(self):
@@ -42,6 +44,14 @@ class DebugViewTests(unittest.TestCase):
         for i in range(45): self.assertFalse(d.update([h],4+i/30,True))
         self.assertFalse(d.update([h],7,True))
         self.assertFalse(d.update([h],7.1,True))
+
+    def test_main_hand_rejected_and_swapping_main_changes_eligible_hand(self):
+        for main,side,wanted in (("right","Right",0),("right","Left",1),
+                                 ("left","Left",0),("left","Right",1)):
+            d=hm.DebugViewHold(); h=pose(side)
+            self.assertEqual(sum(d.update([h],i/30,True,main) for i in range(70)),wanted)
+        h=pose(); h.hand_side=None; d=hm.DebugViewHold()
+        self.assertFalse(any(d.update([h],i/30,True) for i in range(70)))
 
     def test_gestures_off_does_not_block_shortcut(self):
         m=T.V.FakeMouse(); e=hm.Engine(m,0,0,1920,1080,gestures_on=False)
