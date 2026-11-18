@@ -31,6 +31,6 @@ class TrackRotation(unittest.TestCase):
         self.assertEqual(self.run_angles([(0,20),(7,120)]),[T.K["playpause"]])
 
     def test_cooldown_discards_extra_rotation(self):
-        self.assertEqual(self.run_angles([(0,20),(10,5),(20,120)]),[T.K["nexttrack"]])
+        self.assertEqual(self.run_angles([(0,20),(10,5),(20,25),(30,120)]),[T.K["nexttrack"]])
 
 if __name__=="__main__": unittest.main()
