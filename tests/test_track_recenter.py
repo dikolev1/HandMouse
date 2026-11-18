@@ -1,4 +1,4 @@
-"""One song per excursion, return to the original centre to rearm either direction."""
+"""One song per wrist rotation, return to the original centre to rearm either direction."""
 import contextlib
 import io
 import os
@@ -17,12 +17,28 @@ class TrackRecenter(unittest.TestCase):
         now = 0.0
         for x, frames, scale in [(origin, 10, 1.0)] + segments:
             for _ in range(frames):
-                e.update(T.thumbs(x), now, k=scale)
+                e.update(T.rotated_thumb((x-.45)*125), now, k=scale)
                 now += 1 / 16
         for _ in range(12):
             e.update(T.left(), now)
             now += 1 / 16
         return T.keys(m)
+
+    def test_translation_alone_never_skips(self):
+        m=T.V.FakeMouse(); e=T.hm.SecondHandKeys(m)
+        for i in range(80):
+            e.update(T.rotated_thumb(0, px=.35 + .15*__import__('math').sin(i/8)),i/16)
+        e.update(T.left(), 5.1)
+        self.assertEqual(T.keys(m), [("keys", (T.K["playpause"],))])
+
+    def test_threshold_and_release_after_rotation(self):
+        for angle, expected in ((14, []), (18, ["nexttrack"]), (-18, ["prevtrack"])):
+            m=T.V.FakeMouse(); e=T.hm.SecondHandKeys(m)
+            for i in range(16): e.update(T.rotated_thumb(0),i/16)
+            for i in range(32): e.update(T.rotated_thumb(angle),1+i/16)
+            e.update(T.left(),3.1)
+            wanted=expected or ["playpause"]
+            self.assertEqual(T.keys(m),[("keys",(T.K[key],)) for key in wanted])
 
     @staticmethod
     def move(start, end, frames=20, scale=1.0):

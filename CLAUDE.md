@@ -556,3 +556,5 @@ Settings remains a single window; selecting it closes the menu before opening it
 outside focus, Up/Down/Enter and monitor work-area clamping are supported, including negative
 monitor origins via SetWindowPos. Snapshot/dispatch failures fall back to the native menu.
 No system-wide theme settings are changed. Deploy tray_popup.py before updating the live script.
+
+Music rotation update (v1.3.3): thumb-out pose uses aspect-corrected wrist-to-middle-knuckle angle, not hand translation. Clockwise +15 degrees = next, counterclockwise -15 = previous. Fixed neutral orientation, +/-5 degree return zone with existing 0.5 s dwell; one skip per excursion. Opening after any skip never toggles play/pause. Existing profile binding IDs retained for compatibility.

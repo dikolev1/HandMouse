@@ -71,7 +71,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.3.2"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.3.3"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60
@@ -241,8 +241,8 @@ SECOND_HAND_GESTURES = False
 #                   when it is the only fist (not two fists, not while the main hand scrolls). Hold about half a second;
 #                   two quick fist-open cycles with either hand switch the main hand instead
 #   "thumbs-up, hand open" four fingers folded, thumb out (at least PLAYPAUSE_HOLD), then open the hand
-#   "thumbs-up right" / "thumbs-up left"   thumb-out pose moved sideways, one song per swipe; return
-#                   near the starting point for 0.5 s to rearm either way. Opening does not play/pause
+#   "thumbs-up right" / "thumbs-up left"   thumb-out pose rotated clockwise/anticlockwise, one song per rotation; return
+#                   within 5 degrees of the starting angle for 0.5 s to rearm either way. Opening does not play/pause
 #   "... twice"     the same gesture twice quickly. The single one then waits KEY_DOUBLE_WINDOW to be sure.
 # Keys: ctrl, alt, shift, win, a-z, 0-9, f1-f24, enter, esc, tab, space, backspace, delete, insert, home, end,
 # pageup, pagedown, up, down, left, right, printscreen, playpause, nexttrack, prevtrack, mute, joined with +.
@@ -288,10 +288,10 @@ THUMB_REAL_OUT = 0.5        # ...and the thumb must stick out at least this far 
                             # thumbs-up reads >= 0.5, a fist <= 0.13). A relaxed resting hand's thumb wobbling out
                             # past 0.3 and back gave play / pause by itself (2026-10-17)
 PLAYPAUSE_REPEAT = 1.5      # at least this long (s) between two play / pause
-TRACK_STEP = 0.12           # one track when the hand leaves this radius around the music pose's starting point
-TRACK_RETURN = 0.4          # return within this fraction of TRACK_STEP to rearm a swipe in either direction
-TRACK_RETURN_HOLD = 0.5     # stay near the original start continuously this long before another swipe
-TRACK_REPEAT = 0.4          # at least this long (s) between two track skips
+TRACK_ANGLE = 15.0         # degrees clockwise / counterclockwise from the armed wrist orientation
+TRACK_RETURN_ANGLE = 5.0   # return within this angle of the original orientation to rearm
+TRACK_RETURN_HOLD = 0.5    # continuous neutral dwell; returning itself never skips a song
+TRACK_REPEAT = 0.4         # minimum time between track changes
 
 # Window swipe: with both hands in view, move the SECOND hand (the left one) quickly left or right.
 # The main (right) hand never swipes.
@@ -1421,7 +1421,7 @@ class SecondHandKeys:
     """Keyboard shortcuts from the second hand (SECOND_KEYS). A pinch acts when the thumb lets go, decided from
     the median distances over the whole touch (a few misread frames don't change it); "twice" gestures wait for
     a possible second tap; the Alt+Tab pinch held keeps the window switcher open; a fist presses its key when
-    the hand closes; a thumb-out pose when the hand opens, or moved sideways for the tracks."""
+    the hand closes; a thumb-out pose when the hand opens, or rotated at the wrist for the tracks."""
 
     def __init__(self, mouse):
         self.mouse = mouse
@@ -1449,9 +1449,9 @@ class SecondHandKeys:
         self.thumb_since, self.thumb_last, self.thumb_x, self.thumb_moved = None, -1e9, None, False
         self.thumb_real = -1e9          # last time a thumbs-up held at least KEY_THUMB_MIN was seen
         self.thumb_ready, self.thumb_skip = True, -1e9  # one skip, then return to the fixed start point
-        self.thumb_step = None          # freeze the distance scale when the pose arms (same both ways)
+        self.thumb_step = None          # retained internal slot; rotation thresholds are scale independent
         self.thumb_return_since = None  # continuous dwell near the start after a skip
-        self.thumb_sx = None            # smoothed thumbs-up position (x)
+        self.thumb_sx = None            # smoothed wrist orientation in degrees
         self.thumb_peak = 0.0           # how far the thumb stuck out during this thumbs-up (thumb_out)
         self.media_blocked = False     # a pinch owns the hand until a clear open-hand release
         self.media_open_since = None
@@ -1619,8 +1619,8 @@ class SecondHandKeys:
 
     # ---- fist and thumbs-up
     def _thumbs_up(self, h: Hand, now: float, k: float = 1.0):
-        """Four fingers folded, thumb out, then open -> play/pause. One track per sideways swipe;
-        return near the fixed starting point for 0.5 s to rearm either direction.
+        """Four fingers folded, thumb out, then open -> play/pause. One track per wrist rotation;
+        return within 5 degrees of the fixed starting angle for 0.5 s to rearm.
         A pinch cannot become media while it is misread during movement; open the hand first.
         """
         on = self.thumb_since is not None
@@ -1638,14 +1638,19 @@ class SecondHandKeys:
                 and out > VOLUME_THUMB_OUT and not tucked)
         if pose:
             self.thumb_last = now
-            x = h.center[0]
+            # Camera frames are already mirrored. Positive image-plane rotation is clockwise.
+            wrist, knuckle = h.img[0], h.img[9]
+            x = math.degrees(math.atan2(knuckle[0] - wrist[0],
+                                       (wrist[1] - knuckle[1]) * h.aspect))
             if not on:
                 self.thumb_since, self.thumb_x, self.thumb_moved, self.thumb_ready = now, None, False, True
                 self.thumb_step = None
                 self.thumb_return_since = None
                 self.thumb_sx, self.thumb_peak = x, out
                 return
-            self.thumb_sx = 0.5 * x + 0.5 * self.thumb_sx       # smoothed: a jittery hand doesn't skip
+            # Circular smoothing handles the -180/180 boundary without a false full turn.
+            delta = (x - self.thumb_sx + 180) % 360 - 180
+            self.thumb_sx += 0.5 * delta
             self.thumb_peak = max(self.thumb_peak, out)
             if now - self.thumb_since >= PLAYPAUSE_HOLD and self.thumb_peak >= THUMB_REAL_OUT:
                 self.thumb_real = now
@@ -1653,15 +1658,14 @@ class SecondHandKeys:
                 return                          # not a real thumbs-up (yet): moving now doesn't count
             self.thumb_real = now
             if self.thumb_x is None:
-                self.thumb_x = self.thumb_sx    # the start point: where the thumbs-up became steady
-                # Freeze the scale so turning the palm during a swipe cannot change left/right sensitivity.
-                self.thumb_step = TRACK_STEP * max(k, 0.8)
-            step = self.thumb_step
-            dx = self.thumb_sx - self.thumb_x
+                self.thumb_x = self.thumb_sx
+            step = TRACK_ANGLE
+            dx = (self.thumb_sx - self.thumb_x + 180) % 360 - 180
+            raw_delta = (x - self.thumb_x + 180) % 360 - 180
             d = 1 if dx > 0 else -1
             if not self.thumb_ready:
-                zone = step * TRACK_RETURN
-                if abs(dx) <= zone and abs(x - self.thumb_x) <= zone:
+                zone = TRACK_RETURN_ANGLE
+                if abs(dx) <= zone and abs(raw_delta) <= zone:
                     if self.thumb_return_since is None:
                         self.thumb_return_since = now
                     elif now - self.thumb_return_since >= TRACK_RETURN_HOLD:
@@ -3062,7 +3066,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Print Screen</h2><p>Thumb on the <b>middle and ring</b> fingertips together.</p></div>
  <div class="card"><h2>Voice typing / keyboard</h2><p>Thumb on the <b>index and middle</b> fingertips together: voice typing on / off (Win+H). <b>Twice within 0.75 seconds</b>: the on-screen keyboard opens / closes; type on it with the right hand. A single pinch waits to see whether a second follows.</p></div>
  <div class="card"><h2>Esc</h2><p>Make a <b>fist</b> (thumb tucked in): Esc comes once it has been closed about half a second, no need to open it. Only when it is the only fist in view (two fists = gestures off / on). Two quick fist-open cycles with either hand swap the main hand instead.</p></div>
- <div class="card"><h2>Play / pause, tracks</h2><p>Fold <b>four fingers</b> and keep the <b>thumb out</b> (sideways is fine). Hold briefly (0.12 seconds), then <b>open the hand</b>: play / pause. For tracks, hold steady about a third of a second, then move <b>right</b>: next track, <b>left</b>: previous track. <b>One song per swipe.</b> Return near where you started and <b>wait there 0.5 seconds</b> before swiping again in either direction. Passing through the start does nothing; leaving it early restarts the wait. Holding it out does not skip more songs. After a track skip, opening does not also play / pause. Tucking the thumb cancels. Open fully between pinches and music gestures.</p></div>
+ <div class="card"><h2>Play / pause, tracks</h2><p>Fold <b>four fingers</b> and keep the <b>thumb out</b> (sideways is fine). Hold briefly (0.12 seconds), then <b>open the hand</b>: play / pause. For tracks, hold steady about a third of a second, then rotate the wrist <b>clockwise at least 15 degrees</b>: next track, <b>counterclockwise at least 15 degrees</b>: previous track. <b>One song per rotation.</b> Return within <b>5 degrees of your starting angle</b> and <b>wait there 0.5 seconds</b> before swiping again in either direction. Passing through the start does nothing; leaving it early restarts the wait. Holding it out does not skip more songs. After a track skip, opening does not also play / pause. Tucking the thumb cancels. Open fully between pinches and music gestures.</p></div>
 </div>
 <h3>Main hand</h3>
 <p><b>L-pose keys:</b> index up, thumb out sideways, middle/ring/little fingers folded. Physical <b>left hand = Backspace</b>: deletes once, waits 0.5 seconds, then repeats while held; release to stop. Physical <b>right hand = Enter</b>: one press per pose, release to repeat. These keys follow the physical hand even if you change the main hand.</p>

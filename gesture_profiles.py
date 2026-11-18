@@ -26,8 +26,8 @@ SECOND_LABELS = {
     "index+middle twice": "Other hand: thumb + index + middle twice (Keyboard)",
     "fist": "Other hand: single fist (Esc)",
     "thumbs-up, hand open": "Other hand: music pose then open (Play/pause)",
-    "thumbs-up right": "Other hand: music swipe right (Next track)",
-    "thumbs-up left": "Other hand: music swipe left (Previous track)",
+    "thumbs-up right": "Other hand: music clockwise rotation (Next track)",
+    "thumbs-up left": "Other hand: music counterclockwise rotation (Previous track)",
 }
 GESTURES = dict(MOUSE_GESTURES, **{"second:"+k:v for k,v in SECOND_LABELS.items()},
                 **{"l:left":"Physical left L pose (Backspace; repeats)", "l:right":"Physical right L pose (Enter)"})

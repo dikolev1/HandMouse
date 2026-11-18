@@ -52,6 +52,17 @@ def thumbs(px=0.3, L=0.12):
     return hm.Hand("Left", [(x - mx + px, y - my + 0.6) for x, y in img], w)
 
 
+def rotated_thumb(angle=0, px=.45, scale=1.0):
+    h = thumbs(px)
+    r = math.radians(angle); c, sn = math.cos(r), math.sin(r)
+    ox, oy = h.img[0]
+    img = []
+    for x,y in h.img:
+        dx,dy = (x-ox)*scale,(y-oy)*h.aspect*scale
+        img.append((ox+c*dx-sn*dy, oy+(sn*dx+c*dy)/h.aspect))
+    return hm.Hand("Left", img, h.world, aspect=h.aspect)
+
+
 right = lambda pose=None: V.make(px=0.75, label="Right", pinch=pose)
 both = lambda lpose=None, lpx=0.3: (lambda t: [left(lpose, lpx), right()])
 only_left = lambda pose=None: (lambda t: [left(pose)])
@@ -164,8 +175,9 @@ m, e = run(START + N(12, both("fist")) + N(1, both("thumbs")) + REST)
 check("fist (Esc), then opening flicks the thumb out -> Esc only", keys(m) == ESC, keys(m))
 m, e = run(START + N(12, both("fist")) + N(6, both("thumbs")) + N(8, both()) + REST)
 check("fist (Esc), music pose, open -> Esc then play/pause", keys(m) == ESC + PP, keys(m))
-move = lambda x0, x1, n: [both("thumbs", x0 + (x1 - x0) * k / n) for k in range(1, n + 1)]
-hold = lambda x, n: N(n, both("thumbs", x))
+rot = lambda x: (lambda t: [rotated_thumb((x-.3)*125), right()])
+move = lambda x0, x1, n: [rot(x0 + (x1-x0)*k/n) for k in range(1,n+1)]
+hold = lambda x, n: N(n, rot(x))
 m, e = run(START + hold(0.3, 6) + move(0.3, 0.45, 6) + hold(0.45, 6) + REST)
 check("thumbs-up moved right one step -> next track", keys(m) == NEXT, keys(m))
 m, e = run(START + hold(0.45, 6) + move(0.45, 0.3, 6) + hold(0.3, 6) + REST)
@@ -186,7 +198,7 @@ def run_small(frames, fps=16):
     for f in frames:
         hs = f(t); e.update(hs if isinstance(hs, list) else [hs], t); t += 1 / fps
     return m, e
-big_wobble = [both("thumbs", 0.6 + 0.05 * math.sin(k * 0.6)) for k in range(40)]  # all on the far side of start .4
+big_wobble = [rot(0.6 + 0.05 * math.sin(k * 0.6)) for k in range(40)]  # all on the far side of start .4
 m, e = run(START + hold(0.4, 6) + big_wobble + REST)
 check("hand stays outside the return zone for 2.5 s -> one skip", keys(m) == NEXT, keys(m))
 m, e = run_small(START + hold(0.4, 6) + wobble + REST)
