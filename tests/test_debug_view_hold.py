@@ -1,4 +1,4 @@
-"""Debug-only, continuous two-second camera shortcut."""
+"""Debug-only, continuous 1.5-second camera shortcut."""
 import contextlib
 import io
 import math
@@ -10,7 +10,7 @@ with contextlib.redirect_stdout(io.StringIO()):
     import test_second_keys as T
 hm=T.hm
 
-def pose(side="Left",angle=0,scale=1):
+def pose(side="Right",angle=0,scale=1):
     h=T.with_thumb(T.V.make(fold=(2,3),label=side),(-.10,0,0))
     a=math.radians(angle); points=[]
     for x,y in h.flat:
@@ -30,10 +30,10 @@ class DebugViewTests(unittest.TestCase):
         for name in (None,"fist","thumbs","index","index+middle","middle+ring"):
             self.assertFalse(hm.is_debug_view_pose(T.left(name)))
 
-    def test_two_seconds_once_and_release_rearms(self):
+    def test_hold_once_and_release_rearms(self):
         d=hm.DebugViewHold(); h=pose()
         fires=[i for i in range(151) if d.update([h],i/30,True)]
-        self.assertEqual(fires,[60])
+        self.assertEqual(fires,[45])
         d.update([],5.1,True)
         self.assertFalse(d.update([h],5.2,True))
         self.assertEqual(sum(d.update([h],5.2+i/30,True) for i in range(1,65)),1)
@@ -45,19 +45,39 @@ class DebugViewTests(unittest.TestCase):
         self.assertFalse(d.update([h],7,True))
         self.assertFalse(d.update([h],7.1,True))
 
-    def test_main_hand_rejected_and_swapping_main_changes_eligible_hand(self):
-        for main,side,wanted in (("right","Right",0),("right","Left",1),
-                                 ("left","Left",0),("left","Right",1)):
+    def test_second_hand_rejected_and_swapping_main_changes_eligible_hand(self):
+        for main,side,wanted in (("right","Right",1),("right","Left",0),
+                                 ("left","Left",1),("left","Right",0)):
             d=hm.DebugViewHold(); h=pose(side)
             self.assertEqual(sum(d.update([h],i/30,True,main) for i in range(70)),wanted)
         h=pose(); h.hand_side=None; d=hm.DebugViewHold()
         self.assertFalse(any(d.update([h],i/30,True) for i in range(70)))
 
+    def test_competing_pose_and_pending_actions_block(self):
+        e=hm.Engine(T.V.FakeMouse(),0,0,1920,1080)
+        h=pose(); other=T.left("fist"); other.hand_side="left"
+        self.assertTrue(hm.debug_view_conflict([h,other],e))
+        e.keys.pending=("index",0,1)
+        self.assertTrue(hm.debug_view_conflict([h],e))
+        d=hm.DebugViewHold()
+        for i in range(40): self.assertFalse(d.update([h],i/30,True))
+        self.assertFalse(d.update([h],40/30,True,blocked=True))
+        for i in range(41,85): self.assertFalse(d.update([h],i/30,True))
+        self.assertTrue(d.update([h],87/30,True))
+
+    def test_normal_gestures_enabled_still_allows_uncontested_camera_pose(self):
+        e=hm.Engine(T.V.FakeMouse(),0,0,1920,1080)
+        d=hm.DebugViewHold(); fired=0
+        for i in range(70):
+            hands=[pose()]; e.update(hands,i/30)
+            fired+=d.update(hands,i/30,True,e.main_side,hm.debug_view_conflict(hands,e))
+        self.assertEqual(fired,1)
+
     def test_gestures_off_does_not_block_shortcut(self):
         m=T.V.FakeMouse(); e=hm.Engine(m,0,0,1920,1080,gestures_on=False)
         d=hm.DebugViewHold(); fired=0
         for i in range(70):
-            hands=[pose()]; e.update(hands,i/30); fired+=d.update(hands,i/30,True)
+            hands=[pose()]; e.update(hands,i/30); fired+=d.update(hands,i/30,True,blocked=hm.debug_view_conflict(hands,e))
         self.assertEqual(fired,1)
         self.assertTrue(e.gestures_off)
         self.assertEqual(T.keys(m),[])

@@ -1778,7 +1778,30 @@ def is_debug_view_pose(h: Hand) -> bool:
     palm = max(math.dist(f[WRIST], f[MIDDLE_MCP]), 1e-4)
     spread = abs(ix*ty-iy*tx)/max(math.hypot(ix,iy)*palm, 1e-8)
     return (spread > 0.35 and math.dist(f[2],f[THUMB_TIP])/palm > 0.5
-            and thumb_index_2d(h) > 0.65)
+            and thumb_index_2d(h) > 0.65 and second_contact(h) is None
+            and not thumb_on_palm_base(h))
+
+
+def debug_view_conflict(hands, engine):
+    """Camera shortcut loses to attempted poses, pending actions and held outputs on either hand."""
+    for h in hands:
+        if h.hand_side == engine.main_side and is_debug_view_pose(h):
+            continue
+        # The other hand may be absent or clearly open; ambiguous/partial poses take priority too.
+        if (h.unsure or h.hand_side is None or min(h.ext) < SIDE_STRAIGHT
+                or second_contact(h) is not None or thumb_on_palm_base(h)):
+            return True
+    keys = engine.keys
+    if (engine.clicks.touching or engine.clicks.pressed is not None or engine.dragging
+            or keys.touching or keys.switcher or keys.pending or keys.thumb_since is not None
+            or keys.fist_since is not None or engine.both_fists_since is not None
+            or engine.gestures_changed is not None
+            or getattr(getattr(engine,"custom_runtime",None),"busy",False)):
+        return True
+    return (any(p.busy for p in engine.l_poses.values())
+            or any(p.busy for p in engine.fists.values())
+            or any(p.busy for p in engine.thumbs.values())
+            or any(p.touching is not None or p.pressed for p in engine.sides.values()))
 
 
 class DebugViewHold:
@@ -1787,19 +1810,19 @@ class DebugViewHold:
         self.holds = {}
         self.last = None
 
-    def update(self, hands, now, enabled, main_side="right"):
-        if not enabled or (self.last is not None and now-self.last > 0.35):
+    def update(self, hands, now, enabled, main_side="right", blocked=False):
+        if not enabled or blocked or (self.last is not None and now-self.last > 0.35):
             self.holds.clear()
         self.last = now
-        if not enabled:
+        if not enabled or blocked:
             return False
         visible = {h.key for h in hands if h.hand_side is not None
-                   and h.hand_side != main_side and is_debug_view_pose(h)}
+                   and h.hand_side == main_side and is_debug_view_pose(h)}
         self.holds = {key:value for key,value in self.holds.items() if key in visible}
         fired = False
         for key in visible:
             since, done = self.holds.setdefault(key,(now,False))
-            if not done and now-since >= 2.0:
+            if not done and now-since >= 1.5:
                 self.holds[key] = (since,True)
                 fired = True
         return fired
@@ -4849,7 +4872,8 @@ def run(preview: bool) -> bool:
             tick = now - fps_t >= 1.0
             engine.want_status = view_evt.is_set() or (tick and DIAGNOSTICS) or RECORDER.on
             engine.update(hands, now)
-            if debug_view_hold.update(hands, now, RECORDER.on, engine.main_side):
+            if debug_view_hold.update(hands, now, RECORDER.on, engine.main_side,
+                                      blocked=debug_view_conflict(hands, engine)):
                 toggle_view()
                 if view_evt.is_set():
                     view.activate()
