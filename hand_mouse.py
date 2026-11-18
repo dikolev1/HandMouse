@@ -1807,7 +1807,8 @@ def debug_view_conflict(hands, engine):
 
 class DebugViewHold:
     """Timed pose recognition; callers choose the enabled state and eligible hand."""
-    def __init__(self):
+    def __init__(self, hold=1.5):
+        self.hold = hold
         self.holds = {}
         self.last = None
 
@@ -1823,7 +1824,7 @@ class DebugViewHold:
         fired = False
         for key in visible:
             since, done = self.holds.setdefault(key,(now,False))
-            if not done and now-since >= 1.5:
+            if not done and now-since >= self.hold:
                 self.holds[key] = (since,True)
                 fired = True
         return fired
@@ -1983,7 +1984,7 @@ class Engine:
         self.volume_target = None
         self.swiper = Swiper()
         self.keys = SecondHandKeys(mouse)
-        self.close_window_hold = DebugViewHold()
+        self.close_window_hold = DebugViewHold(hold=1.0)
         self.l_poses: dict[str, LKeyPose] = {}
         self.tracks: dict[str, Track] = {}
         self.next_id = 0
@@ -2094,7 +2095,7 @@ class Engine:
                 self.volume.set(new)
 
     def release_all(self, now: float, keep_fists: bool = False, keep_custom: bool = False):
-        self.close_window_hold = DebugViewHold()
+        self.close_window_hold = DebugViewHold(hold=1.0)
         if not keep_custom and hasattr(self, "custom_runtime"):
             self.custom_runtime.cancel()
             self.custom_was_busy = False

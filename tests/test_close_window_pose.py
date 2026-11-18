@@ -29,10 +29,10 @@ class CloseWindowTests(unittest.TestCase):
             self.assertEqual(len(T.keys(m)),wanted)
 
     def test_short_hold_and_loss_cancel(self):
-        m,e=self.run_pose(frames=35)
+        m,e=self.run_pose(frames=25)
         self.assertEqual(T.keys(m),[])
-        for i in range(35,60):e.update([],i/30)
-        for i in range(60,95):e.update([pose("Left")],i/30)
+        for i in range(25,60):e.update([],i/30)
+        for i in range(60,85):e.update([pose("Left")],i/30)
         self.assertEqual(T.keys(m),[])
 
 if __name__=="__main__":unittest.main()
