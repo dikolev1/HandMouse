@@ -53,4 +53,3 @@ class DebugViewTests(unittest.TestCase):
         self.assertEqual(T.keys(m),[])
 
 if __name__=="__main__": unittest.main()
-
