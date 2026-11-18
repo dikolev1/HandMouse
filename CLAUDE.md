@@ -558,3 +558,5 @@ monitor origins via SetWindowPos. Snapshot/dispatch failures fall back to the na
 No system-wide theme settings are changed. Deploy tray_popup.py before updating the live script.
 
 Music rotation update (v1.3.3): thumb-out pose uses aspect-corrected wrist-to-middle-knuckle angle, not hand translation. Clockwise +8 degrees = next, counterclockwise -8 = previous. Fixed neutral orientation, +/-6 degree return zone with 0.2 s dwell; one skip per excursion. Opening after any skip never toggles play/pause. Existing profile binding IDs retained for compatibility.
+
+Music update: return zone/dwell removed. 8 degree relative rotations, 0.3 s cooldown. Cooldown movement discarded and anchor follows raw angle so holding still cannot repeat. Further 8 degree rotation in either direction triggers next/previous; opening after a skip never play/pauses.

@@ -241,8 +241,8 @@ SECOND_HAND_GESTURES = False
 #                   when it is the only fist (not two fists, not while the main hand scrolls). Hold about half a second;
 #                   two quick fist-open cycles with either hand switch the main hand instead
 #   "thumbs-up, hand open" four fingers folded, thumb out (at least PLAYPAUSE_HOLD), then open the hand
-#   "thumbs-up right" / "thumbs-up left"   thumb-out pose rotated clockwise/anticlockwise, one song per rotation; return
-#                   within 6 degrees of the starting angle for 0.2 s to rearm either way. Opening does not play/pause
+#   "thumbs-up right" / "thumbs-up left"   thumb-out pose rotated clockwise/anticlockwise, one song per rotation;
+#                   a 0.3 s cooldown separates rotations; no return zone. Opening does not play/pause
 #   "... twice"     the same gesture twice quickly. The single one then waits KEY_DOUBLE_WINDOW to be sure.
 # Keys: ctrl, alt, shift, win, a-z, 0-9, f1-f24, enter, esc, tab, space, backspace, delete, insert, home, end,
 # pageup, pagedown, up, down, left, right, printscreen, playpause, nexttrack, prevtrack, mute, joined with +.
@@ -289,9 +289,7 @@ THUMB_REAL_OUT = 0.5        # ...and the thumb must stick out at least this far 
                             # past 0.3 and back gave play / pause by itself (2026-10-17)
 PLAYPAUSE_REPEAT = 1.5      # at least this long (s) between two play / pause
 TRACK_ANGLE = 8.0         # degrees clockwise / counterclockwise from the armed wrist orientation
-TRACK_RETURN_ANGLE = 6.0   # return within this angle of the original orientation to rearm
-TRACK_RETURN_HOLD = 0.2    # continuous neutral dwell; returning itself never skips a song
-TRACK_REPEAT = 0.4         # minimum time between track changes
+TRACK_REPEAT = 0.3         # cooldown between wrist-rotation track changes
 
 # Window swipe: with both hands in view, move the SECOND hand (the left one) quickly left or right.
 # The main (right) hand never swipes.
@@ -1448,9 +1446,7 @@ class SecondHandKeys:
         self.fist_since, self.fist_frames, self.fist_ok = None, 0, False
         self.thumb_since, self.thumb_last, self.thumb_x, self.thumb_moved = None, -1e9, None, False
         self.thumb_real = -1e9          # last time a thumbs-up held at least KEY_THUMB_MIN was seen
-        self.thumb_ready, self.thumb_skip = True, -1e9  # one skip, then return to the fixed start point
-        self.thumb_step = None          # retained internal slot; rotation thresholds are scale independent
-        self.thumb_return_since = None  # continuous dwell near the start after a skip
+        self.thumb_skip = -1e9          # last track change; rotation during cooldown is ignored
         self.thumb_sx = None            # smoothed wrist orientation in degrees
         self.thumb_peak = 0.0           # how far the thumb stuck out during this thumbs-up (thumb_out)
         self.media_blocked = False     # a pinch owns the hand until a clear open-hand release
@@ -1488,10 +1484,8 @@ class SecondHandKeys:
                 self._end_touch(now, fire=False)        # hand gone mid-touch: let go, don't act
             self.fist_since = self.thumb_since = None
             self.media_open_since = None
-            self.thumb_return_since = None
             return
         if h.unsure:                    # finger shapes unreadable this frame: keep the state
-            self.thumb_return_since = None  # unreadable frames do not count as waiting at the start
             if self.touching:
                 self.last_raw = now
             return
@@ -1620,7 +1614,7 @@ class SecondHandKeys:
     # ---- fist and thumbs-up
     def _thumbs_up(self, h: Hand, now: float, k: float = 1.0):
         """Four fingers folded, thumb out, then open -> play/pause. One track per wrist rotation;
-        return within 6 degrees of the fixed starting angle for 0.2 s to rearm.
+        no return zone; a 0.3 s cooldown separates track changes.
         A pinch cannot become media while it is misread during movement; open the hand first.
         """
         on = self.thumb_since is not None
@@ -1643,9 +1637,7 @@ class SecondHandKeys:
             x = math.degrees(math.atan2(knuckle[0] - wrist[0],
                                        (wrist[1] - knuckle[1]) * h.aspect))
             if not on:
-                self.thumb_since, self.thumb_x, self.thumb_moved, self.thumb_ready = now, None, False, True
-                self.thumb_step = None
-                self.thumb_return_since = None
+                self.thumb_since, self.thumb_x, self.thumb_moved = now, None, False
                 self.thumb_sx, self.thumb_peak = x, out
                 return
             # Circular smoothing handles the -180/180 boundary without a false full turn.
@@ -1661,25 +1653,16 @@ class SecondHandKeys:
                 self.thumb_x = self.thumb_sx
             step = TRACK_ANGLE
             dx = (self.thumb_sx - self.thumb_x + 180) % 360 - 180
-            raw_delta = (x - self.thumb_x + 180) % 360 - 180
             d = 1 if dx > 0 else -1
-            if not self.thumb_ready:
-                zone = TRACK_RETURN_ANGLE
-                if abs(dx) <= zone and abs(raw_delta) <= zone:
-                    if self.thumb_return_since is None:
-                        self.thumb_return_since = now
-                    elif now - self.thumb_return_since >= TRACK_RETURN_HOLD:
-                        self.thumb_ready = True
-                        self.thumb_return_since = None
-                else:
-                    self.thumb_return_since = None  # leaving the zone restarts the full wait
+            if now - self.thumb_skip < TRACK_REPEAT:
+                # Discard movement during cooldown, including the remainder of the last rotation.
+                self.thumb_x = x
                 return
-            if abs(dx) >= step and now - self.thumb_skip >= TRACK_REPEAT:
-                self.thumb_moved, self.thumb_ready, self.thumb_skip = True, False, now
-                self.thumb_return_since = None
+            if abs(dx) >= step:
+                self.thumb_moved, self.thumb_skip = True, now
+                self.thumb_x = x
                 self._do("thumbs-up right" if d > 0 else "thumbs-up left")
         elif on:
-            self.thumb_return_since = None
             opened = sorted(h.ext)[1] > SIDE_STRAIGHT  # at least three fingers open, not one flickering tip
             if (opened and not self.thumb_moved
                     and self.thumb_last - self.thumb_since >= PLAYPAUSE_HOLD and self.thumb_peak >= THUMB_REAL_OUT):
@@ -3066,7 +3049,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Print Screen</h2><p>Thumb on the <b>middle and ring</b> fingertips together.</p></div>
  <div class="card"><h2>Voice typing / keyboard</h2><p>Thumb on the <b>index and middle</b> fingertips together: voice typing on / off (Win+H). <b>Twice within 0.75 seconds</b>: the on-screen keyboard opens / closes; type on it with the right hand. A single pinch waits to see whether a second follows.</p></div>
  <div class="card"><h2>Esc</h2><p>Make a <b>fist</b> (thumb tucked in): Esc comes once it has been closed about half a second, no need to open it. Only when it is the only fist in view (two fists = gestures off / on). Two quick fist-open cycles with either hand swap the main hand instead.</p></div>
- <div class="card"><h2>Play / pause, tracks</h2><p>Fold <b>four fingers</b> and keep the <b>thumb out</b> (sideways is fine). Hold briefly (0.12 seconds), then <b>open the hand</b>: play / pause. For tracks, hold steady about a third of a second, then rotate the wrist <b>clockwise at least 8 degrees</b>: next track, <b>counterclockwise at least 8 degrees</b>: previous track. <b>One song per rotation.</b> Return within <b>6 degrees of your starting angle</b> and <b>wait there 0.2 seconds</b> before swiping again in either direction. Passing through the start does nothing; leaving it early restarts the wait. Holding it out does not skip more songs. After a track skip, opening does not also play / pause. Tucking the thumb cancels. Open fully between pinches and music gestures.</p></div>
+ <div class="card"><h2>Play / pause, tracks</h2><p>Fold four fingers and keep the thumb out. Hold briefly, then open: play / pause. For tracks, hold steady about a third of a second, then rotate the wrist clockwise at least 8 degrees for next, counterclockwise for previous. There is no return zone. After each skip, a 0.3-second cooldown ignores movement; rotate another 8 degrees in either direction to skip again. Holding still never repeats. Opening after a skip stops without play / pause. Tucking the thumb cancels.</p></div>
 </div>
 <h3>Main hand</h3>
 <p><b>L-pose keys:</b> index up, thumb out sideways, middle/ring/little fingers folded. Physical <b>left hand = Backspace</b>: deletes once, waits 0.5 seconds, then repeats while held; release to stop. Physical <b>right hand = Enter</b>: one press per pose, release to repeat. These keys follow the physical hand even if you change the main hand.</p>
