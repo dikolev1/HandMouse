@@ -71,7 +71,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.3.3"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.3.4"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60
@@ -1764,6 +1764,44 @@ def is_l_pose(h: Hand, keep: bool = False) -> bool:
     return (tt / palm > 0.5 and ti / palm > 0.4
             and spread > (0.28 if keep else 0.35)
             and cosine < (0.90 if keep else 0.85))
+
+
+def is_debug_view_pose(h: Hand) -> bool:
+    """Thumb, index and middle out; ring and little folded. Scale/rotation independent."""
+    if h.unsure or not fully_in_view(h):
+        return False
+    if min(h.ext[:2]) < SIDE_STRAIGHT or max(h.ext[2:]) >= FIST_CURL:
+        return False
+    f = h.flat
+    ix, iy = f[INDEX_TIP][0]-f[INDEX_MCP][0], f[INDEX_TIP][1]-f[INDEX_MCP][1]
+    tx, ty = f[THUMB_TIP][0]-f[INDEX_MCP][0], f[THUMB_TIP][1]-f[INDEX_MCP][1]
+    palm = max(math.dist(f[WRIST], f[MIDDLE_MCP]), 1e-4)
+    spread = abs(ix*ty-iy*tx)/max(math.hypot(ix,iy)*palm, 1e-8)
+    return (spread > 0.35 and math.dist(f[2],f[THUMB_TIP])/palm > 0.5
+            and thumb_index_2d(h) > 0.65)
+
+
+class DebugViewHold:
+    """Debug-only camera shortcut, independent of enabled gesture output."""
+    def __init__(self):
+        self.holds = {}
+        self.last = None
+
+    def update(self, hands, now, enabled):
+        if not enabled or (self.last is not None and now-self.last > 0.35):
+            self.holds.clear()
+        self.last = now
+        if not enabled:
+            return False
+        visible = {h.key for h in hands if is_debug_view_pose(h)}
+        self.holds = {key:value for key,value in self.holds.items() if key in visible}
+        fired = False
+        for key in visible:
+            since, done = self.holds.setdefault(key,(now,False))
+            if not done and now-since >= 2.0:
+                self.holds[key] = (since,True)
+                fired = True
+        return fired
 
 
 class LKeyPose:
@@ -4509,6 +4547,7 @@ def run(preview: bool) -> bool:
     pause_evt = threading.Event()
     camera_change_evt = threading.Event()
     calib_evt = threading.Event()
+    debug_view_hold = DebugViewHold()
     view_evt = threading.Event()        # camera view window shown
     if preview:
         view_evt.set()
@@ -4700,6 +4739,7 @@ def run(preview: bool) -> bool:
                 view.hide()
 
             if pause_evt.is_set():
+                debug_view_hold.update([], mono, False)
                 if cap is not None:
                     engine.keys.pending = None
                     engine.release_all(time.monotonic())
@@ -4757,6 +4797,10 @@ def run(preview: bool) -> bool:
             last_ts = ts
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             hands = sensor.process(rgb, ts, now)
+            if debug_view_hold.update(hands, now, RECORDER.on):
+                view_evt.set()
+                tray.refresh()
+                log.info("debug camera shortcut: two-second three-finger hold")
             frames += 1
             frames_total += 1
             tick = now - fps_t >= 1.0
