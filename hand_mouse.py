@@ -71,7 +71,7 @@ from functools import cached_property
 
 # =============================== SETTINGS ===============================
 
-APP_VERSION = "1.3.4"       # bump before publishing a new version to main (major.minor.patch)
+APP_VERSION = "1.3.5"       # bump before publishing a new version to main (major.minor.patch)
 UPDATE_SOURCE = "https://raw.githubusercontent.com/dikolev1/HandMouse/main/hand_mouse.py"
 UPDATE_PAGE = "https://github.com/dikolev1/HandMouse"
 UPDATE_INTERVAL = 6 * 60 * 60
@@ -261,6 +261,7 @@ SECOND_KEYS = {
     "thumbs-up, hand open": "playpause",
     "thumbs-up right": "nexttrack",
     "thumbs-up left": "prevtrack",
+    "close window": "alt+f4",
 }
 KEY_DOUBLE_WINDOW = 0.45    # a second tap this soon (s) after letting go makes it "twice"
 KEYBOARD_DOUBLE_WINDOW = 0.75  # keyboard pair: allow time to open/reform two fingers at 10-16 camera fps
@@ -1805,7 +1806,7 @@ def debug_view_conflict(hands, engine):
 
 
 class DebugViewHold:
-    """Debug-only camera shortcut, independent of enabled gesture output."""
+    """Timed pose recognition; callers choose the enabled state and eligible hand."""
     def __init__(self):
         self.holds = {}
         self.last = None
@@ -1982,6 +1983,7 @@ class Engine:
         self.volume_target = None
         self.swiper = Swiper()
         self.keys = SecondHandKeys(mouse)
+        self.close_window_hold = DebugViewHold()
         self.l_poses: dict[str, LKeyPose] = {}
         self.tracks: dict[str, Track] = {}
         self.next_id = 0
@@ -2092,6 +2094,7 @@ class Engine:
                 self.volume.set(new)
 
     def release_all(self, now: float, keep_fists: bool = False, keep_custom: bool = False):
+        self.close_window_hold = DebugViewHold()
         if not keep_custom and hasattr(self, "custom_runtime"):
             self.custom_runtime.cancel()
             self.custom_was_busy = False
@@ -2272,6 +2275,15 @@ class Engine:
                 if old_side is not None:
                     old_side.release()
         self.custom_was_busy = custom_busy
+        close_candidates = [h for h in hands if h.hand_side is not None
+                            and h.hand_side != self.main_side and h.key != custom_key
+                            and is_debug_view_pose(h)]
+        close_fired = self.close_window_hold.update(
+            close_candidates, now, not self.gestures_off,
+            "left" if self.main_side == "right" else "right")
+        if close_candidates and not self.gestures_off:
+            self.keys.pending = None
+            self.keys.reset()  # release Alt before a close-window shortcut can run
         acting = hands if SECOND_HAND_GESTURES else [h for h in hands if h is main]    # hands whose gestures count
         l_busy, l_fired = set(), []
         self.l_poses = {key: pose for key, pose in self.l_poses.items() if key in self.tracks}
@@ -2399,6 +2411,9 @@ class Engine:
             if main is None or main.key == custom_key:
                 self._status(hands, main, 0.0, frozen=True)
                 return
+
+        if close_fired:
+            self.keys._do("close window")
 
         for h, side in l_fired:
             label, vk = ("Backspace", _VK_NAMES["backspace"]) if side == "left" else ("Enter", _VK_NAMES["enter"])

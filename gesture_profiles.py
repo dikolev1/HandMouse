@@ -16,6 +16,7 @@ MOUSE_GESTURES = {
     "mouse:x2": "Main hand: thumb across palm (Forward)",
 }
 SECOND_LABELS = {
+    "close window": "Other hand: thumb + index + middle extended, hold 1.5 s (Close window)",
     "index": "Other hand: thumb + index (Alt+Tab)",
     "middle": "Other hand: thumb + middle (Copy)",
     "ring": "Other hand: thumb + ring (Paste)",
