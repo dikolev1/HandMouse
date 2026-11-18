@@ -242,7 +242,7 @@ SECOND_HAND_GESTURES = False
 #                   two quick fist-open cycles with either hand switch the main hand instead
 #   "thumbs-up, hand open" four fingers folded, thumb out (at least PLAYPAUSE_HOLD), then open the hand
 #   "thumbs-up right" / "thumbs-up left"   thumb-out pose rotated clockwise/anticlockwise, one song per rotation; return
-#                   within 4 degrees of the starting angle for 0.3 s to rearm either way. Opening does not play/pause
+#                   within 6 degrees of the starting angle for 0.2 s to rearm either way. Opening does not play/pause
 #   "... twice"     the same gesture twice quickly. The single one then waits KEY_DOUBLE_WINDOW to be sure.
 # Keys: ctrl, alt, shift, win, a-z, 0-9, f1-f24, enter, esc, tab, space, backspace, delete, insert, home, end,
 # pageup, pagedown, up, down, left, right, printscreen, playpause, nexttrack, prevtrack, mute, joined with +.
@@ -289,8 +289,8 @@ THUMB_REAL_OUT = 0.5        # ...and the thumb must stick out at least this far 
                             # past 0.3 and back gave play / pause by itself (2026-10-17)
 PLAYPAUSE_REPEAT = 1.5      # at least this long (s) between two play / pause
 TRACK_ANGLE = 8.0         # degrees clockwise / counterclockwise from the armed wrist orientation
-TRACK_RETURN_ANGLE = 4.0   # return within this angle of the original orientation to rearm
-TRACK_RETURN_HOLD = 0.3    # continuous neutral dwell; returning itself never skips a song
+TRACK_RETURN_ANGLE = 6.0   # return within this angle of the original orientation to rearm
+TRACK_RETURN_HOLD = 0.2    # continuous neutral dwell; returning itself never skips a song
 TRACK_REPEAT = 0.4         # minimum time between track changes
 
 # Window swipe: with both hands in view, move the SECOND hand (the left one) quickly left or right.
@@ -1620,7 +1620,7 @@ class SecondHandKeys:
     # ---- fist and thumbs-up
     def _thumbs_up(self, h: Hand, now: float, k: float = 1.0):
         """Four fingers folded, thumb out, then open -> play/pause. One track per wrist rotation;
-        return within 4 degrees of the fixed starting angle for 0.3 s to rearm.
+        return within 6 degrees of the fixed starting angle for 0.2 s to rearm.
         A pinch cannot become media while it is misread during movement; open the hand first.
         """
         on = self.thumb_since is not None
@@ -3066,7 +3066,7 @@ HELP_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title
  <div class="card"><h2>Print Screen</h2><p>Thumb on the <b>middle and ring</b> fingertips together.</p></div>
  <div class="card"><h2>Voice typing / keyboard</h2><p>Thumb on the <b>index and middle</b> fingertips together: voice typing on / off (Win+H). <b>Twice within 0.75 seconds</b>: the on-screen keyboard opens / closes; type on it with the right hand. A single pinch waits to see whether a second follows.</p></div>
  <div class="card"><h2>Esc</h2><p>Make a <b>fist</b> (thumb tucked in): Esc comes once it has been closed about half a second, no need to open it. Only when it is the only fist in view (two fists = gestures off / on). Two quick fist-open cycles with either hand swap the main hand instead.</p></div>
- <div class="card"><h2>Play / pause, tracks</h2><p>Fold <b>four fingers</b> and keep the <b>thumb out</b> (sideways is fine). Hold briefly (0.12 seconds), then <b>open the hand</b>: play / pause. For tracks, hold steady about a third of a second, then rotate the wrist <b>clockwise at least 8 degrees</b>: next track, <b>counterclockwise at least 8 degrees</b>: previous track. <b>One song per rotation.</b> Return within <b>4 degrees of your starting angle</b> and <b>wait there 0.3 seconds</b> before swiping again in either direction. Passing through the start does nothing; leaving it early restarts the wait. Holding it out does not skip more songs. After a track skip, opening does not also play / pause. Tucking the thumb cancels. Open fully between pinches and music gestures.</p></div>
+ <div class="card"><h2>Play / pause, tracks</h2><p>Fold <b>four fingers</b> and keep the <b>thumb out</b> (sideways is fine). Hold briefly (0.12 seconds), then <b>open the hand</b>: play / pause. For tracks, hold steady about a third of a second, then rotate the wrist <b>clockwise at least 8 degrees</b>: next track, <b>counterclockwise at least 8 degrees</b>: previous track. <b>One song per rotation.</b> Return within <b>6 degrees of your starting angle</b> and <b>wait there 0.2 seconds</b> before swiping again in either direction. Passing through the start does nothing; leaving it early restarts the wait. Holding it out does not skip more songs. After a track skip, opening does not also play / pause. Tucking the thumb cancels. Open fully between pinches and music gestures.</p></div>
 </div>
 <h3>Main hand</h3>
 <p><b>L-pose keys:</b> index up, thumb out sideways, middle/ring/little fingers folded. Physical <b>left hand = Backspace</b>: deletes once, waits 0.5 seconds, then repeats while held; release to stop. Physical <b>right hand = Enter</b>: one press per pose, release to repeat. These keys follow the physical hand even if you change the main hand.</p>

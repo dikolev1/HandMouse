@@ -70,19 +70,17 @@ class TrackRecenter(unittest.TestCase):
         self.assertEqual(events, [("keys", (T.K["nexttrack"],))])
 
     def test_short_return_wait_does_not_rearm(self):
-        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .45, 8) + [(.45, 2, 1.0)]
-                                 + self.move(.45, .26, 8) + [(.26, 16, 1.0)])
+        events = self.run_swipes(self.move(.45, .64) + [(.45, 2, 1.0), (.26, 16, 1.0)])
         self.assertEqual(events, [("keys", (T.K["nexttrack"],))])
 
     def test_leaving_start_resets_the_wait(self):
-        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .45, 8)
-                                 + [(.45, 4, 1.0), (.55, 4, 1.0), (.45, 4, 1.0)]
-                                 + self.move(.45, .26, 8) + [(.26, 12, 1.0)])
+        events = self.run_swipes(self.move(.45, .64)
+                                 + [(.45, 2, 1.0), (.51, 2, 1.0), (.45, 2, 1.0), (.26, 12, 1.0)])
         self.assertEqual(events, [("keys", (T.K["nexttrack"],))])
 
     def test_return_near_start_is_enough(self):
-        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .48) + [(.48, 12, 1.0)]
-                                 + self.move(.48, .26))
+        events = self.run_swipes(self.move(.45, .64) + self.move(.64, .49) + [(.49, 6, 1.0)]
+                                 + self.move(.49, .26))
         self.assertEqual(events, [("keys", (T.K["nexttrack"],)), ("keys", (T.K["prevtrack"],))])
 
     def test_same_threshold_despite_scale_reading_drift(self):
