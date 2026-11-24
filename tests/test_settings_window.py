@@ -36,7 +36,10 @@ class SettingsTest(unittest.TestCase):
             values=dict(gain=1,camera=0,auto=False,debug=False,screenshot=True)
             calls=[];saved=[];applied=[];errors=[]
             def set_value(key,value): values[key]=value;calls.append((key,value))
-            context={"get_camera":lambda:values["camera"],"on_camera":lambda v:set_value("camera",v),
+            from cursor_feedback import FEEDBACK_OPTIONS
+            cursor_feedback = dict.fromkeys(FEEDBACK_OPTIONS, True)
+            context={"get_cursor_feedback": cursor_feedback.copy, "on_cursor_feedback": cursor_feedback.__setitem__,
+                     "get_camera":lambda:values["camera"],"on_camera":lambda v:set_value("camera",v),
                      "get_sensitivity":lambda:values["gain"],"on_sensitivity":lambda v:set_value("gain",v),
                      "save_sensitivity":saved.append,"get_screenshot":lambda:values["screenshot"],
                      "on_screenshot":lambda v:set_value("screenshot",v),"get_autostart":lambda:values["auto"],
@@ -60,7 +63,13 @@ class SettingsTest(unittest.TestCase):
                         self.assertEqual(root.title(),"Hand Mouse - Settings")
                         nb=next(w for w in walk(root) if isinstance(w,ttk.Notebook))
                         names={nb.tab(t,"text"):root.nametowidget(t) for t in nb.tabs()}
-                        self.assertEqual(set(names),{"General","Cursor & appearance","Gesture profiles","Help & updates"})
+                        self.assertEqual(set(names),{"General","Cursor & appearance","Gesture profiles","Help & updates","Cursor feedback"})
+                        feedback_checks = {w.cget("text"): w for w in walk(names["Cursor feedback"])
+                                           if isinstance(w, ttk.Checkbutton)}
+                        self.assertEqual(set(feedback_checks), set(FEEDBACK_OPTIONS.values()))
+                        feedback_checks[FEEDBACK_OPTIONS["close_shake"]].invoke()
+                        self.assertFalse(cursor_feedback["close_shake"])
+                        self.assertTrue(cursor_feedback["close_ring"])
                         camera=next(w for w in walk(names["General"]) if isinstance(w,ttk.Combobox))
                         camera.set("Camera 3");camera.event_generate("<<ComboboxSelected>>")
                         checks={w.cget("text"):w for w in walk(names["General"]) if isinstance(w,ttk.Checkbutton)}
@@ -100,7 +109,7 @@ class SettingsTest(unittest.TestCase):
                         self.assertEqual(runtime.poll()[2],1)
                         buttons(root)["Save recorded gesture"].invoke()
                         self.assertEqual(nb.tab(nb.select(),"text"),"Gesture profiles")
-                        self.assertEqual(len(nb.tabs()),4)
+                        self.assertEqual(len(nb.tabs()),5)
                         self.assertTrue(all(nb.tab(t,"state")=="normal" for t in nb.tabs()))
                         buttons(root)["Save & apply"].invoke()
                         self.assertEqual(len(store.snapshot()["profiles"]["QA"]["__custom__"]),1)
@@ -111,7 +120,7 @@ class SettingsTest(unittest.TestCase):
                         self.assertEqual(nb.tab(nb.select(),"text"),"Test gesture")
                         self.assertFalse(any(isinstance(w,tk.Toplevel) for w in walk(root)))
                         buttons(root)["Close test"].invoke()
-                        self.assertEqual(len(nb.tabs()),4)
+                        self.assertEqual(len(nb.tabs()),5)
                         self.assertEqual(spy.events,[])
                         root.after(250,window.stop_evt.set)
                     except Exception as exc: failed(exc)

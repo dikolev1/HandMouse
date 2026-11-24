@@ -177,6 +177,7 @@ class ProfileMouse:
         self.bindings={}
         self.held={}
         self.counts={}
+        self.on_action = lambda: None
 
     def __getattr__(self,name): return getattr(self.base,name)
 
@@ -188,8 +189,10 @@ class ProfileMouse:
             elif kind=="mouse":
                 self._hold("mouse",value,True)
                 self._hold("mouse",value,False)
-            elif kind=="keyboard": self.base.toggle_keyboard()
-            elif kind=="open": os.startfile(value)
+            elif kind=="keyboard": self.toggle_keyboard()
+            elif kind=="open":
+                os.startfile(value)
+                self.on_action()
             return True
         except Exception as exc:
             log.warning("Profile action %s failed: %s",action_label(action),exc)
@@ -202,6 +205,8 @@ class ProfileMouse:
         if (down and count==0) or (not down and count==1):
             if kind=="keys": self.base.key(value,down)
             else: self.base.button(value,down)
+            if down:
+                self.on_action()
         if new: self.counts[identity]=new
         else: self.counts.pop(identity,None)
 
@@ -212,9 +217,15 @@ class ProfileMouse:
     def key(self,vk,down):
         self._hold("keys",vk,down)
 
+    def toggle_keyboard(self):
+        self.base.toggle_keyboard()
+        self.on_action()
+
     def keys(self,vks):
         if not any(self.counts.get(("keys",vk),0) for vk in vks):
             self.base.keys(vks)
+            if vks:
+                self.on_action()
             return
         # A shortcut must not release a modifier held by another gesture.
         import time

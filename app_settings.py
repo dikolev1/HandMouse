@@ -109,4 +109,19 @@ def build_pages(root,notebook,context):
         if pending["gain"] is None:
             value.set(context["get_sensitivity"]()*100)
             label.set(f"{value.get():.0f}%")
+    if "get_cursor_feedback" in context:
+        from cursor_feedback import FEEDBACK_OPTIONS
+        feedback = page("Cursor feedback")
+        ttk.Label(feedback, text="Cursor feedback", font=("Segoe UI", 14, "bold")).pack(anchor="w", pady=(0, 12))
+        group = ttk.LabelFrame(feedback, text="Pointer and gesture effects", padding=14)
+        group.pack(fill="x")
+        values = context["get_cursor_feedback"]()
+        variables = {name: tk.BooleanVar(master=root, value=values[name]) for name in FEEDBACK_OPTIONS}
+        for name, option_label in FEEDBACK_OPTIONS.items():
+            variable = variables[name]
+            ttk.Checkbutton(group, text=option_label, variable=variable,
+                            command=lambda key=name, var=variable: report(
+                                context["on_cursor_feedback"], key, var.get())).pack(anchor="w", pady=4)
+        ttk.Label(feedback, text="Changes apply immediately and are saved for next time.").pack(anchor="w", pady=(10, 0))
+
     return pages,flush,poll

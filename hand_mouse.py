@@ -1812,6 +1812,13 @@ class DebugViewHold:
         self.holds = {}
         self.last = None
 
+    def progress(self, now):
+        if self.last != now or not self.holds:
+            return None
+        pending = [min(1.0, (now - since) / self.hold)
+                   for since, done in self.holds.values() if not done]
+        return max(pending, default=None)
+
     def update(self, hands, now, enabled, main_side="right", blocked=False):
         if not enabled or blocked or (self.last is not None and now-self.last > 0.35):
             self.holds.clear()
@@ -2074,6 +2081,7 @@ class Engine:
             self.cursor.reset(keep_position=True)
             self.last_tip = self.pending_tip = None
             log.info("gestures on (%s)", how)
+        self.gestures_change_source = how
         self.gestures_changed = "off" if off else "on"
 
     def _volume(self, target, dt: float):
@@ -2228,6 +2236,7 @@ class Engine:
             self.fist_stop_armed = False    # don't count fists that were already closed
 
         if not hands:
+            self.close_window_hold.update([], now, False)
             if hasattr(self, "custom_runtime"):
                 self.custom_runtime.cancel()
                 self.custom_was_busy = False
@@ -2414,6 +2423,7 @@ class Engine:
                 return
 
         if close_fired:
+            self.close_window_fired_at = now
             self.keys._do("close window")
 
         for h, side in l_fired:
@@ -4633,6 +4643,22 @@ def run(preview: bool) -> bool:
     pause_evt = threading.Event()
     camera_change_evt = threading.Event()
     calib_evt = threading.Event()
+    from cursor_feedback import CursorFeedback, FEEDBACK_OPTIONS, GestureSwitchFeedback
+    cursor_feedback = CursorFeedback()
+    switch_feedback = GestureSwitchFeedback()
+    saved_feedback = state.get("cursor_feedback")
+    saved_feedback = saved_feedback if isinstance(saved_feedback, dict) else {}
+    feedback_prefs = {name: saved_feedback.get(name) is not False for name in FEEDBACK_OPTIONS}
+    cursor_feedback.squeeze_enabled = feedback_prefs["squeeze"]
+    mouse.on_action = cursor_feedback.squeeze
+    continuous_feedback = set()
+
+    def set_cursor_feedback(name, enabled):
+        if name not in FEEDBACK_OPTIONS:
+            raise ValueError("Unknown cursor feedback option")
+        feedback_prefs[name] = bool(enabled)
+        cursor_feedback.squeeze_enabled = feedback_prefs["squeeze"]
+        save_state(cursor_feedback=feedback_prefs.copy())
     debug_view_hold = DebugViewHold()
     view_evt = threading.Event()        # camera view window shown
     if preview:
@@ -4719,6 +4745,7 @@ def run(preview: bool) -> bool:
         "get_screenshot": lambda: screenshot_precision.enabled, "on_screenshot": set_screenshot_precision,
         "get_autostart": autostart_enabled, "on_autostart": set_autostart,
         "get_debug": lambda: RECORDER.on,
+        "get_cursor_feedback": feedback_prefs.copy, "on_cursor_feedback": set_cursor_feedback,
         "on_debug": lambda desired: toggle_debug() if bool(desired) != RECORDER.on else None,
         "on_relearn": relearn, "check_updates": updates.manual, "download": open_update_page,
         "version": APP_VERSION, "help_html": HELP_HTML,
@@ -4782,6 +4809,7 @@ def run(preview: bool) -> bool:
                 restart = True
                 break
             mono = time.monotonic()
+            cursor_feedback.set_hand(engine.main_side if feedback_prefs["mirror"] else "right")
             if THEME.mode != theme_shown:
                 theme_shown = THEME.mode
                 tray.refresh()
@@ -4826,6 +4854,9 @@ def run(preview: bool) -> bool:
 
             if pause_evt.is_set():
                 debug_view_hold.update([], mono, False)
+                cursor_feedback.show()
+                continuous_feedback.clear()
+                switch_feedback = GestureSwitchFeedback()
                 if cap is not None:
                     engine.keys.pending = None
                     engine.release_all(time.monotonic())
@@ -4888,8 +4919,39 @@ def run(preview: bool) -> bool:
             tick = now - fps_t >= 1.0
             engine.want_status = view_evt.is_set() or (tick and DIAGNOSTICS) or RECORDER.on
             engine.update(hands, now)
-            if debug_view_hold.update(hands, now, RECORDER.on, engine.main_side,
-                                      blocked=debug_view_conflict(hands, engine)):
+            debug_fired = debug_view_hold.update(hands, now, RECORDER.on, engine.main_side,
+                                                blocked=debug_view_conflict(hands, engine))
+            active_modes = set()
+            if not engine.gestures_off:
+                if engine.scroll_marks or engine.hscroll_marks:
+                    active_modes.add("scroll")
+                if engine.volume_target is not None:
+                    active_modes.add("volume")
+                if engine.dragging:
+                    active_modes.add("drag")
+            if (active_modes - continuous_feedback or debug_fired or engine.gestures_changed
+                    or engine.gesture.startswith(("MAIN HAND:", "SWIPE "))):
+                cursor_feedback.squeeze()
+            continuous_feedback = active_modes
+
+            close_progress = engine.close_window_hold.progress(now)
+            if engine.gestures_off or not engine.keys.actions.get("close window"):
+                close_progress = None
+            elif getattr(engine, "close_window_fired_at", None) == now:
+                close_progress = 1.0
+            debug_progress = 1.0 if debug_fired else debug_view_hold.progress(now)
+            visible_pair = len(hands) == 2 and all(not h.unsure and fully_in_view(h, margin=0) for h in hands)
+            switch_ring = switch_feedback.update(engine, now, visible_pair, feedback_prefs, STOP_HOLD)
+            if switch_ring:
+                cursor_feedback.show(*switch_ring)
+            elif close_progress is not None and (feedback_prefs["close_ring"] or feedback_prefs["close_shake"]):
+                cursor_feedback.show("red" if feedback_prefs["close_ring"] else None,
+                                     close_progress, shake=feedback_prefs["close_shake"], latch=True)
+            elif debug_progress is not None and feedback_prefs["camera_ring"]:
+                cursor_feedback.show("blue", debug_progress, latch=True)
+            else:
+                cursor_feedback.show()
+            if debug_fired:
                 toggle_view()
                 if view_evt.is_set():
                     view.activate()
@@ -4970,6 +5032,7 @@ def run(preview: bool) -> bool:
                              f"{'' if sensor.view == 'normal' else '  colours: ' + sensor.view}", text_on_image=False)
                 view.show(compose(frame))
     finally:
+        cursor_feedback.close()
         engine.keys.pending = None
         engine.release_all(time.monotonic())
         profiles_window.stop()
