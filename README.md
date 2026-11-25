@@ -2,9 +2,15 @@
 
 Control the Windows mouse with your hands through the laptop webcam. Everything runs locally.
 
-Windows asks for **administrator approval** when you launch the app, so gesture clicks can also
-control the Windows on-screen keyboard. Approve the UAC prompt with your physical mouse or keyboard.
-Cancelling leaves the app closed.
+## Download and install on Windows
+
+1. [Download Hand Mouse from GitHub](https://github.com/dikolev1/HandMouse/archive/refs/heads/main.zip). You can also choose **Code → Download ZIP** on the repository page.
+2. Right-click the ZIP and choose **Extract All**. Choose a folder you can keep, such as `Documents\HandMouse`.
+3. Open the extracted folder and double-click **`setup.bat`**. Setup uses an internet connection to install the Python dependencies and can install Python 3.12 with Windows Package Manager if the Python launcher is missing. It opens the camera preview when finished.
+4. Approve the Windows administrator prompt with your physical mouse or keyboard. The app uses this permission so gesture clicks can also control the Windows on-screen keyboard.
+5. Right-click the **Hand Mouse** tray icon near the clock and choose **Gestures on**.
+
+If the camera does not open, check **Windows Settings → Privacy & security → Camera → Let desktop apps access your camera**. If setup fails, look for details in `setup_log.txt` in the extracted folder.
 
 At every launch, the **camera is on and gestures are off** (orange tray badge). Hold **both fists for 1-3 seconds**, then keep **both palms open for 1 second**
 to enable them. You can also use the tray icon's **Gestures on**.
@@ -217,12 +223,6 @@ the choice is remembered in `hand_mouse_state.json` (delete the `camera` entry t
 | Ctrl+Alt+H | Stop / resume tracking |
 | Ctrl+Alt+C | Re-learn your normal hand size |
 | Ctrl+Alt+Q | Quit |
-
-## Setup on a new computer
-
-Double-click **setup.bat**. It finds Python (or installs Python 3.12 with winget), installs the libraries,
-downloads the hand-tracking model (about 8 MB) and opens the camera view. Windows must allow desktop apps to
-use the camera: Settings > Privacy & security > Camera > "Let desktop apps access your camera".
 
 ## Tuning
 
